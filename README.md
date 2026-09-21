@@ -17,8 +17,10 @@ it can't.
 ## What it does
 
 - **Workspace panel** — stage map (gate/worktree/terminal flags), dispatchable
-  entities, and every gate awaiting the captain with Approve / Revise / Hold
-  plus an optional recorded reason. Approvals use `gate record --consume`.
+  entities, and every gate awaiting the captain with Approve / Revise / Hold.
+  Approvals use `gate record --consume`. Revise and Hold require a reason
+  (the CLI rejects them without `--reason`), so those buttons stay disabled
+  until one is typed; Approve's reason stays optional.
 - **New Spacedock** — global Command Center item and sidebar surface. Pick a
   registered project; the plugin creates a workspace *without* a first agent
   (`firstAgentContext` omitted) and opens the Spacedock panel. Paseo's built-in
@@ -31,7 +33,9 @@ it can't.
   launch a Commission agent to tailor it.
 - **Timeline card** — when an agent's turn ends with gates pending, a
   `spacedock-gates` row is appended to its timeline; decisions can be recorded
-  inline without opening the panel.
+  inline without opening the panel. The card revalidates against live
+  `status --next` on mount; gates that already moved on render without buttons
+  instead of failing on click.
 - **Session env injection** — any agent session opened inside a workflow gets
   `SPACEDOCK_BIN`, `SPACEDOCK_WORKFLOW_DIR`, and `PASEO_SPACEDOCK_ROLE`
   (`first-officer` via the `spacedock.role` label, `ensign` for children).

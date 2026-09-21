@@ -2,6 +2,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   bootstrapRpc,
   gateRecordRpc,
+  gatesRpc,
   judgeGateRpc,
   launchFoRpc,
   spacedockSettings,
@@ -12,6 +13,7 @@ import {
   discoverWorkflowDir,
   gateRecord,
   isNoWorkflowError,
+  nextState,
   readyGates,
 } from "./server/cli";
 import { inferSuggestion, launchCommissionAgent, scaffoldWorkflow } from "./server/bootstrap";
@@ -85,6 +87,8 @@ export default function contribute(server: PluginServerContext) {
     return { ok: result.ok, output: result.output, gates };
   });
 
+  server.handle(gatesRpc, async (input) => nextState(input.workflowDir, input.bin));
+
   server.handle(judgeGateRpc, async (input) => {
     const apiKey = input.apiKey || process.env.TYPESAFE_API_KEY || undefined;
     const gates = await readyGates(input.workflowDir, input.bin).catch(() => []);
@@ -92,7 +96,14 @@ export default function contribute(server: PluginServerContext) {
       (g) => g.slug === input.entity || g.id === input.entity,
     );
     if (!gate) {
-      return { ok: false, error: `no ready gate for ${input.entity}` };
+      const current = await nextState(input.workflowDir, input.bin)
+        .then((s) => s.currentOf[input.entity])
+        .catch(() => undefined);
+      const where = current ? ` (at ${current})` : "";
+      return {
+        ok: false,
+        error: `No gate is waiting for ${input.entity} right now${where}.`,
+      };
     }
     try {
       const state = await gatherGateState(input.workflowDir, gate);

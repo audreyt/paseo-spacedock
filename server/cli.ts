@@ -117,18 +117,46 @@ export async function bootStatus(
   return { status: "ok", workflowDir, boot };
 }
 
-export async function readyGates(
+export interface NextState {
+  gates: ReadyGate[];
+  currentOf: Record<string, string>;
+}
+
+export async function nextState(
   workflowDir: string,
   bin?: string,
-): Promise<ReadyGate[]> {
+): Promise<NextState> {
+  const empty: NextState = { gates: [], currentOf: {} };
   const result = await run(
     resolveBin(bin),
     ["status", "--next", "--json", "--workflow-dir", workflowDir],
     workflowDir,
   );
-  if (result.code !== 0 || !result.stdout.trim().startsWith("{")) return [];
-  const parsed = JSON.parse(result.stdout) as { ready_gates?: ReadyGate[] };
-  return parsed.ready_gates ?? [];
+  if (result.code !== 0 || !result.stdout.trim().startsWith("{")) return empty;
+  let parsed: {
+    ready_gates?: ReadyGate[];
+    dispatchable?: Array<{ id?: string; slug?: string; current?: string }>;
+  };
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return empty;
+  }
+  const currentOf: Record<string, string> = {};
+  for (const d of parsed.dispatchable ?? []) {
+    if (d.current) {
+      if (d.slug) currentOf[d.slug] = d.current;
+      if (d.id) currentOf[d.id] = d.current;
+    }
+  }
+  return { gates: parsed.ready_gates ?? [], currentOf };
+}
+
+export async function readyGates(
+  workflowDir: string,
+  bin?: string,
+): Promise<ReadyGate[]> {
+  return (await nextState(workflowDir, bin).catch(() => null))?.gates ?? [];
 }
 
 export async function gateRecord(input: {
@@ -139,6 +167,15 @@ export async function gateRecord(input: {
   consume?: boolean;
   bin?: string;
 }): Promise<{ ok: boolean; output: string }> {
+  if (
+    (input.decision === "revise" || input.decision === "hold") &&
+    !input.reason?.trim()
+  ) {
+    return {
+      ok: false,
+      output: "Hold and Revise need a reason — type one and retry.",
+    };
+  }
   const args = [
     "gate",
     "record",
@@ -154,5 +191,28 @@ export async function gateRecord(input: {
   if (input.consume && input.decision === "approve") args.push("--consume");
   const result = await run(resolveBin(input.bin), args, input.workflowDir);
   const output = (result.stdout + result.stderr).trim();
-  return { ok: result.code === 0, output };
+  if (result.code === 0) return { ok: true, output };
+  return {
+    ok: false,
+    output: await translateRecordError(input, output),
+  };
+}
+
+async function translateRecordError(
+  input: { workflowDir: string; entity: string; bin?: string },
+  raw: string,
+): Promise<string> {
+  if (raw.includes("requires --reason")) {
+    return "Hold and Revise need a reason — type one and retry.";
+  }
+  if (raw.includes("not an actionable")) {
+    const current = await nextState(input.workflowDir, input.bin)
+      .then((s) => s.currentOf[input.entity])
+      .catch(() => undefined);
+    const where = current
+      ? ` is at stage ${current}, which has no gate`
+      : " is no longer at a gate stage";
+    return `${input.entity}${where} — nothing to record. Refresh for the current list.`;
+  }
+  return raw || "gate record failed";
 }

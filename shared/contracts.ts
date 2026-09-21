@@ -146,6 +146,15 @@ export const gateRecordRpc = defineRpc({
   }),
 });
 
+export const gatesRpc = defineRpc({
+  name: "spacedock.gates.refresh",
+  input: z.object({ workflowDir: z.string(), bin: z.string().optional() }),
+  output: z.object({
+    gates: z.array(readyGate),
+    currentOf: z.record(z.string(), z.string()),
+  }),
+});
+
 export const judgeGateRpc = defineRpc({
   name: "spacedock.gate.judge",
   input: z.object({

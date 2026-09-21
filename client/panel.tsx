@@ -54,23 +54,24 @@ function GateCard({
     policy?: { mode: string; text: string };
     model?: string;
   } | null>(null);
+  const pendingNote = verdict?.stamp
+    ? verdict.stamp
+    : verdict?.verdict
+      ? `Jev ${verdict.verdict}@${verdict.confidence?.toFixed(2) ?? "?"}`
+      : null;
+  const pendingReason = [reason.trim() || null, pendingNote]
+    .filter(Boolean)
+    .join(" · ");
   const decide = useMutation({
-    mutationFn: (decision: Decision) => {
-      const note = verdict?.stamp
-        ? verdict.stamp
-        : verdict?.verdict
-          ? `Jev ${verdict.verdict}@${verdict.confidence?.toFixed(2) ?? "?"}`
-          : null;
-      const text = [reason.trim() || null, note].filter(Boolean).join(" · ");
-      return record({
+    mutationFn: (decision: Decision) =>
+      record({
         workflowDir,
         entity: gate.slug || gate.id,
         decision,
-        reason: text || undefined,
+        reason: pendingReason || undefined,
         consume: decision === "approve",
         bin,
-      });
-    },
+      }),
     onSuccess: (result) => {
       if (result.ok) {
         onDecided();
@@ -99,30 +100,37 @@ function GateCard({
     },
     onError: (error) => setMessage(String(error)),
   });
-  const button = (decision: Decision, label: string, accent: boolean) => (
-    <Pressable
-      key={decision}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} ${gate.slug}`}
-      disabled={decide.isPending}
-      onPress={() => decide.mutate(decision)}
-      style={{
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        backgroundColor: accent ? theme.colors.accent : theme.colors.surface2,
-      }}
-    >
-      <Text
+  const button = (decision: Decision, label: string, accent: boolean) => {
+    const disabled =
+      decide.isPending || (decision !== "approve" && !pendingReason);
+    return (
+      <Pressable
+        key={decision}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} ${gate.slug}`}
+        disabled={disabled}
+        onPress={() => decide.mutate(decision)}
         style={{
-          color: accent ? theme.colors.accentForeground : theme.colors.foreground,
-          fontSize: 13,
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: accent ? theme.colors.accent : theme.colors.surface2,
+          opacity: disabled ? 0.5 : 1,
         }}
       >
-        {label}
-      </Text>
-    </Pressable>
-  );
+        <Text
+          style={{
+            color: accent
+              ? theme.colors.accentForeground
+              : theme.colors.foreground,
+            fontSize: 13,
+          }}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
   return (
     <View
       style={{
@@ -143,7 +151,7 @@ function GateCard({
       <TextInput
         value={reason}
         onChangeText={setReason}
-        placeholder="Reason (optional, recorded with the decision)"
+        placeholder="Reason (required for Revise / Hold)"
         placeholderTextColor={theme.colors.foregroundMuted}
         style={{
           color: theme.colors.foreground,
