@@ -100,6 +100,30 @@ The daemon process must actually have those env vars — a daemon launched by
 the desktop app does not read your shell rc, so either restart the daemon from
 a shell that has them or set base URL/model in the plugin settings screen.
 
+## Gate projection (scripts, e-ink intake)
+
+`scripts/` carries a zero-dependency Python path from an open gate to a
+captain-readable page, for surfaces outside the Paseo panel — e.g. an e-ink
+tablet that syncs over Dropbox/Drive:
+
+- `project-gate.py <workflow-dir> <entity> --recommend approve|reject
+  [--reason TEXT] [--gloss gloss.json]` reads the entity's `gates:`
+  front-matter binding, the room's canonical Briefing (`index.json`), and the
+  stage's `Gate content` preference, and emits a bilingual
+  `en:`/`zh:` spine. The Recommend line is first-officer judgment, never
+  Briefing data, so `--recommend` is required; `--recommend reject` also
+  requires `--reason`. `--gloss` maps English source strings to zh
+  renderings; unmapped source text is tagged `[runin: 原文:]` in zh spans.
+- `remarkable-intake.py` runs the projector, renders HTML with a
+  Lantern-compatible renderer (`--lantern`, default `~/prep/lantern.py`),
+  prints a Move-portrait PDF with headless Chrome, and drops it in
+  `--outbox`. `remarkable-intake.py inbox --dir DIR [--since STATE]`
+  reports newly returned files with the matching `gate record` template.
+
+The return path stays human: read the captain's marks on the returned page,
+then `spacedock gate record <entity> --decision approve|revise|hold --actor
+person:captain [--consume] --workflow-dir <dir>`.
+
 ## Install
 
 ```bash
