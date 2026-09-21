@@ -114,15 +114,23 @@ tablet that syncs over Dropbox/Drive:
   Briefing data, so `--recommend` is required; `--recommend reject` also
   requires `--reason`. `--gloss` maps English source strings to zh
   renderings; unmapped source text is tagged `[runin: 原文:]` in zh spans.
-- `remarkable-intake.py` runs the projector, renders HTML with a
-  Lantern-compatible renderer (`--lantern`, default `~/prep/lantern.py`),
+- `remarkable-intake.py ... --outbox DIR --lantern PATH` runs the projector,
+  renders HTML with the given Lantern-compatible renderer,
   prints a Move-portrait PDF with headless Chrome, and drops it in
   `--outbox`. `remarkable-intake.py inbox --dir DIR [--since STATE]`
   reports newly returned files with the matching `gate record` template.
-
-The return path stays human: read the captain's marks on the returned page,
-then `spacedock gate record <entity> --decision approve|revise|hold --actor
-person:captain [--consume] --workflow-dir <dir>`.
+- `gate-loop.py --inbox DIR --workflow-dir DIR [--auto-record]` closes the
+  loop: for each new annotated PDF it reads the captain's marks — typed
+  PDF annotations via pypdf, else a rendered page through a local VLM
+  (`--reader ollama --reader-model <vision-capable>`) — parses one
+  unambiguous decision, and drafts `gate record --actor person:captain`
+  (`--consume` on approve; present-gate "reject" maps to record "revise").
+  Only typed annotations auto-record: they are captain-added bytes by
+  construction. VLM reads always draft for human confirmation, because a
+  rasterized page cannot distinguish printed prompt text from handwritten
+  marks. Conflicting or missing marks stay human-read, never auto-recorded.
+  Processed files move to `done/`, so re-polls are idempotent. Printed
+  page text is outbound content and is never parsed as a decision.
 
 ## Install
 

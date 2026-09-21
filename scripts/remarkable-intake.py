@@ -2,17 +2,17 @@
 
 1. Runs sibling project-gate.py (front-matter binding + room index.json
    + stage-def Gate content -> bilingual spine.md).
-2. Renders HTML with a Lantern-compatible renderer (default: ~/prep/lantern.py).
+2. Renders HTML with a Lantern-compatible renderer (--lantern, required).
 3. Prints a Move-portrait PDF with headless Chrome and drops it in OUTBOX.
 
 The reMarkable reads OUTBOX via Dropbox/Drive sync; annotated pages come back
-through INBOX, where the first officer reads the decision and runs
+through INBOX, where gate-loop.py reads the decision and runs
 `spacedock gate record --decision ... --actor person:captain` (return path).
 
 Usage:
   remarkable-intake.py <workflow-dir> <entity> --recommend approve|reject
-      [--reason TEXT] [--gloss gloss.json] --outbox DIR
-      [--lantern PATH] [--keep-html] [--chrome PATH]
+      [--reason TEXT] [--gloss gloss.json] --outbox DIR --lantern PATH
+      [--keep-html] [--chrome PATH]
   remarkable-intake.py inbox --dir DIR [--since STATE]
 """
 import json
@@ -35,10 +35,11 @@ def forward(argv):
     rest = argv[2:]
     if "--outbox" not in rest:
         raise SystemExit("missing --outbox DIR")
+    if "--lantern" not in rest:
+        raise SystemExit("missing --lantern PATH (Lantern-compatible renderer)")
     outbox = Path(rest[rest.index("--outbox") + 1])
     outbox.mkdir(parents=True, exist_ok=True)
-    lantern = Path(rest[rest.index("--lantern") + 1] if "--lantern" in rest
-                   else Path.home() / "prep" / "lantern.py")
+    lantern = Path(rest[rest.index("--lantern") + 1])
     chrome = (rest[rest.index("--chrome") + 1] if "--chrome" in rest else
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     keep_html = "--keep-html" in rest
