@@ -30,6 +30,22 @@ export function resolveBin(explicit?: string): string {
   return "spacedock";
 }
 
+export function forgetDiscovery(cwd: string): void {
+  discoveryCache.delete(cwd);
+}
+
+export function isNoWorkflowError(text: string): boolean {
+  return text.includes("no commissioned Spacedock workflow found");
+}
+
+export async function spacedockVersion(bin?: string): Promise<string | null> {
+  const result = await run(resolveBin(bin), ["--version"], process.cwd());
+  if (result.code !== 0) return null;
+  const firstLine = result.stdout.split("\n", 1)[0] ?? "";
+  const match = firstLine.match(/^spacedock\s+(\S+)/);
+  return match ? match[1] : null;
+}
+
 interface RunResult {
   code: number;
   stdout: string;

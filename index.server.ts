@@ -1,12 +1,20 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
+  bootstrapRpc,
   gateRecordRpc,
   judgeGateRpc,
   launchFoRpc,
   spacedockSettings,
   statusRpc,
 } from "./shared/contracts";
-import { bootStatus, gateRecord, readyGates } from "./server/cli";
+import {
+  bootStatus,
+  discoverWorkflowDir,
+  gateRecord,
+  isNoWorkflowError,
+  readyGates,
+} from "./server/cli";
+import { inferSuggestion, launchCommissionAgent, scaffoldWorkflow } from "./server/bootstrap";
 import { gatherGateState, judgeGate } from "./server/judge";
 import { registerHooks } from "./server/hooks";
 import { launchFirstOfficer } from "./server/launch";
@@ -18,7 +26,28 @@ export default function contribute(server: PluginServerContext) {
     try {
       const result = await bootStatus(cwd, bin);
       if (result.status === "error") {
-        return { found: false as const, error: result.error };
+        if (isNoWorkflowError(result.error)) {
+          return {
+            found: false as const,
+            reason: "no-workflow" as const,
+            error: result.error,
+            suggest: inferSuggestion(cwd, { bin }),
+          };
+        }
+        try {
+          const discovered = await discoverWorkflowDir(cwd, bin);
+          if (discovered === null) {
+            return {
+              found: false as const,
+              reason: "no-workflow" as const,
+              error: result.error,
+              suggest: inferSuggestion(cwd, { bin }),
+            };
+          }
+        } catch {
+          // discovery threw — treat as a generic error, not no-workflow
+        }
+        return { found: false as const, reason: "error" as const, error: result.error };
       }
       return {
         found: true as const,
@@ -26,7 +55,7 @@ export default function contribute(server: PluginServerContext) {
         boot: result.boot,
       };
     } catch (error) {
-      return { found: false as const, error: String(error) };
+      return { found: false as const, reason: "error" as const, error: String(error) };
     }
   });
 
@@ -93,6 +122,52 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(launchFoRpc, launchFirstOfficer);
+
+  server.handle(bootstrapRpc, async (input, { paseo }) => {
+    const workspace = await paseo.workspaces.ref(input.workspaceId).refresh();
+    const cwd = workspace?.workspaceDirectory;
+    if (!cwd) {
+      return { ok: false, error: "workspace directory unknown" };
+    }
+    const scaffold = await scaffoldWorkflow({
+      cwd,
+      dir: input.dir,
+      mission: input.mission,
+      entityLabel: input.entityLabel,
+      bin: input.bin,
+    });
+    if (!scaffold.ok) {
+      return { ok: false, error: scaffold.error };
+    }
+    let agentId: string | undefined;
+    let agentError: string | undefined;
+    if (input.launchAgent) {
+      const agent = await launchCommissionAgent(
+        {
+          workspaceId: input.workspaceId,
+          cwd,
+          workflowDir: scaffold.workflowDir,
+          mission: input.mission,
+          provider: input.provider,
+          bin: input.bin,
+          skillsDir: input.skillsDir,
+        },
+        { paseo },
+      );
+      if ("agentId" in agent) {
+        agentId = agent.agentId;
+      } else {
+        agentError = agent.error;
+      }
+    }
+    return {
+      ok: true,
+      workflowDir: scaffold.workflowDir,
+      created: scaffold.created,
+      agentId,
+      agentError,
+    };
+  });
 
   return registerHooks(server);
 }

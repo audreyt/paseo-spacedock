@@ -5,12 +5,20 @@ decision layer inside Paseo: agents do the work, the captain records the calls.
 
 Requires the `spacedock` binary on the daemon host and a commissioned workflow
 (a directory whose README frontmatter carries `commissioned-by: spacedock@…`).
+If the workspace has none, the panel offers to **bootstrap** one: it infers a
+mission and `docs/<slug>/` target from the repo's README/AGENTS.md, scaffolds a
+validated refinement-shaped workflow, and can launch a Commission agent to
+tailor it.
 
 ## What it does
 
 - **Workspace panel** — stage map (gate/worktree/terminal flags), dispatchable
   entities, and every gate awaiting the captain with Approve / Revise / Hold
   plus an optional recorded reason. Approvals use `gate record --consume`.
+- **Workflow bootstrap** — when no commissioned workflow is found, the panel
+  infers a mission and `docs/<slug>/` target from the repo's README/AGENTS.md,
+  scaffolds a validated refinement-shaped workflow, and can launch a Commission
+  agent to tailor it.
 - **Timeline card** — when an agent's turn ends with gates pending, a
   `spacedock-gates` row is appended to its timeline; decisions can be recorded
   inline without opening the panel.
@@ -19,7 +27,11 @@ Requires the `spacedock` binary on the daemon host and a commissioned workflow
   (`first-officer` via the `spacedock.role` label, `ensign` for children).
 - **Launch first officer** — creates a labeled first-officer agent in the
   workspace with the dispatcher system prompt, pointed at the detected
-  workflow dir and the first-officer skill when resolvable.
+  workflow dir and the first-officer skill when resolvable. The provider is
+  resolved as `provider/model`: an explicit `provider/model` setting wins; a
+  bare provider picks your Paseo agent profile for it, else the provider's
+  default model; empty picks the first available provider with a profile or
+  default model.
 - **`/spacedock`** slash command and a Command Center item open the panel.
 - **Settings screen** — binary path override, skills directory, first-officer
   provider (empty = first available), TypeSafe API key, base URL, and judge model.

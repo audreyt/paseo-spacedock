@@ -5,10 +5,11 @@ import {
   useWorkspace,
 } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import {
   type BootStatus,
+  bootstrapRpc,
   gateRecordRpc,
   judgeGateRpc,
   launchFoRpc,
@@ -268,9 +269,15 @@ export function SpacedockPanel({
   const model = setting("typesafeModel");
   const status = useRpc(statusRpc);
   const launchFo = useRpc(launchFoRpc);
+  const bootstrap = useRpc(bootstrapRpc);
   const queryClient = useQueryClient();
   const [task, setTask] = useState("");
   const [launchMessage, setLaunchMessage] = useState<string | null>(null);
+  const [bsMission, setBsMission] = useState("");
+  const [bsDir, setBsDir] = useState("");
+  const [bsLabel, setBsLabel] = useState("");
+  const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
+  const bsInitRef = useRef(false);
 
   const query = useQuery({
     queryKey: ["spacedock-status", directory, bin],
@@ -278,6 +285,21 @@ export function SpacedockPanel({
     enabled: !!directory,
     refetchInterval: 15_000,
   });
+
+  const suggest = query.data?.found === false ? query.data.suggest : undefined;
+
+  useEffect(() => {
+    if (query.data?.found) {
+      bsInitRef.current = false;
+      return;
+    }
+    if (suggest && !bsInitRef.current) {
+      bsInitRef.current = true;
+      setBsMission(suggest.mission);
+      setBsDir(suggest.dir);
+      setBsLabel(suggest.entityLabel);
+    }
+  }, [query.data?.found, suggest]);
 
   const launch = useMutation({
     mutationFn: () =>
@@ -297,6 +319,38 @@ export function SpacedockPanel({
       );
     },
     onError: (error) => setLaunchMessage(String(error)),
+  });
+
+  const runBootstrap = useMutation({
+    mutationFn: (launchAgent: boolean) =>
+      bootstrap({
+        workspaceId,
+        dir: bsDir.trim(),
+        mission: bsMission.trim(),
+        entityLabel: bsLabel.trim() || undefined,
+        launchAgent,
+        provider:
+          settings.status === "ready" ? settings.values.foProvider : undefined,
+        bin,
+        skillsDir: setting("skillsDir"),
+      }),
+    onSuccess: (result) => {
+      if (result.ok) {
+        const parts = [`Workflow created at ${result.workflowDir}`];
+        if (result.agentId) {
+          parts.push(` · commission agent launched (${result.agentId})`);
+        } else if (result.agentError) {
+          parts.push(` · agent not launched: ${result.agentError}`);
+        }
+        setBootstrapMessage(parts.join(""));
+        queryClient.invalidateQueries({
+          queryKey: ["spacedock-status", directory, bin],
+        });
+      } else {
+        setBootstrapMessage(result.error ?? "bootstrap failed");
+      }
+    },
+    onError: (error) => setBootstrapMessage(String(error)),
   });
 
   const styles = useMemo(
@@ -340,6 +394,15 @@ export function SpacedockPanel({
         paddingVertical: 8,
         fontSize: 13,
       },
+      multiline: {
+        minHeight: 60,
+        textAlignVertical: "top" as const,
+      },
+      secondary: {
+        color: theme.colors.foregroundMuted,
+        fontSize: 13,
+        textDecorationLine: "underline" as const,
+      },
     }),
     [theme, layout.compact],
   );
@@ -353,12 +416,83 @@ export function SpacedockPanel({
         <Text style={styles.section}>Checking for a commissioned workflow…</Text>
       ) : null}
       {data?.found === false ? (
-        <View style={styles.card}>
-          <Text style={styles.section}>
-            {data.error ?? "No commissioned workflow here."}
-          </Text>
-          <Text style={styles.mono}>{directory}</Text>
-        </View>
+        data.reason === "error" ? (
+          <View style={styles.card}>
+            <Text style={styles.section}>
+              {data.error ?? "No commissioned workflow here."}
+            </Text>
+            <Text style={styles.mono}>{directory}</Text>
+            <Text style={styles.section}>
+              Is spacedock installed? Set the binary path in plugin settings.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={{ color: theme.colors.foreground, fontSize: 15 }}>
+              No Spacedock workflow here yet.
+            </Text>
+            <Text style={styles.section}>
+              A workflow is a directory whose README carries `commissioned-by:
+              spacedock@…` frontmatter and a stage list. These defaults were
+              inferred from this repo — edit and go.
+            </Text>
+            <TextInput
+              value={bsMission}
+              onChangeText={setBsMission}
+              placeholder="Mission"
+              placeholderTextColor={theme.colors.foregroundMuted}
+              multiline
+              style={[styles.input, styles.multiline]}
+            />
+            <TextInput
+              value={bsDir}
+              onChangeText={setBsDir}
+              placeholder="Directory (relative)"
+              placeholderTextColor={theme.colors.foregroundMuted}
+              style={styles.input}
+            />
+            <TextInput
+              value={bsLabel}
+              onChangeText={setBsLabel}
+              placeholder="Work item label"
+              placeholderTextColor={theme.colors.foregroundMuted}
+              style={styles.input}
+            />
+            {data.suggest && !data.suggest.gitRepo ? (
+              <Text style={styles.section}>
+                Not a git repository yet — bootstrap runs `git init` first.
+              </Text>
+            ) : null}
+            {data.suggest && !data.suggest.skillFound ? (
+              <Text style={styles.section}>
+                Commission skill not found (set the skills directory in settings
+                for a richer tailoring pass).
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Bootstrap workflow"
+              disabled={runBootstrap.isPending}
+              onPress={() => runBootstrap.mutate(true)}
+              style={styles.primary}
+            >
+              <Text style={styles.primaryText}>
+                {runBootstrap.isPending ? "Bootstrapping…" : "Bootstrap workflow"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Scaffold only, no agent"
+              disabled={runBootstrap.isPending}
+              onPress={() => runBootstrap.mutate(false)}
+            >
+              <Text style={styles.secondary}>Scaffold only, no agent</Text>
+            </Pressable>
+            {bootstrapMessage ? (
+              <Text style={styles.section}>{bootstrapMessage}</Text>
+            ) : null}
+          </View>
+        )
       ) : null}
       {data?.found ? (
         <>

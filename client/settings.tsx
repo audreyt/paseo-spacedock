@@ -91,8 +91,8 @@ export function SpacedockSettings({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             label="First-officer provider"
-            hint="provider or provider/model for launched first officers; empty = first available"
-            placeholder="omp"
+            hint="provider/model (e.g. omp/anthropic/claude-fable-5-1) or a bare provider; bare picks your Paseo agent profile for it, else the provider's default model"
+            placeholder="omp/<model>"
             initialValue={draft.foProvider}
             onChangeText={(text) =>
               setDraft((d) => ({ ...d, foProvider: text }))

@@ -67,17 +67,53 @@ export const spacedockSettings = defineSettings({
   }),
 });
 
+export const workflowSuggestion = z.object({
+  dir: z.string(),
+  mission: z.string(),
+  entityLabel: z.string(),
+  gitRepo: z.boolean(),
+  skillFound: z.boolean(),
+});
+export type WorkflowSuggestion = z.output<typeof workflowSuggestion>;
+
 export const statusRpc = defineRpc({
   name: "spacedock.status",
   input: z.object({ cwd: z.string(), bin: z.string().optional() }),
   output: z.discriminatedUnion("found", [
-    z.object({ found: z.literal(false), error: z.string().optional() }),
+    z.object({
+      found: z.literal(false),
+      reason: z.enum(["no-workflow", "error"]),
+      error: z.string().optional(),
+      suggest: workflowSuggestion.optional(),
+    }),
     z.object({
       found: z.literal(true),
       workflowDir: z.string(),
       boot: bootStatus,
     }),
   ]),
+});
+
+export const bootstrapRpc = defineRpc({
+  name: "spacedock.workflow.bootstrap",
+  input: z.object({
+    workspaceId: z.string(),
+    dir: z.string(),
+    mission: z.string(),
+    entityLabel: z.string().optional(),
+    launchAgent: z.boolean(),
+    provider: z.string().optional(),
+    bin: z.string().optional(),
+    skillsDir: z.string().optional(),
+  }),
+  output: z.object({
+    ok: z.boolean(),
+    workflowDir: z.string().optional(),
+    created: z.array(z.string()).optional(),
+    agentId: z.string().optional(),
+    agentError: z.string().optional(),
+    error: z.string().optional(),
+  }),
 });
 
 export const gateRecordRpc = defineRpc({
