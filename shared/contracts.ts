@@ -1,0 +1,113 @@
+import { defineRpc, defineSettings } from "@getpaseo/plugin";
+import { z } from "zod";
+
+export const readyGate = z.object({
+  id: z.string(),
+  slug: z.string(),
+  current: z.string(),
+  readiness: z.string(),
+});
+export type ReadyGate = z.output<typeof readyGate>;
+
+export const stage = z.looseObject({
+  name: z.string(),
+  worktree: z.string().optional(),
+  gate: z.string().optional(),
+  terminal: z.string().optional(),
+  initial: z.string().optional(),
+  model: z.string().optional(),
+});
+export type Stage = z.output<typeof stage>;
+
+// `spacedock status --boot --json --identify` payload. Loose: the binary owns the
+// key set and appends over time.
+export const bootStatus = z.looseObject({
+  command: z.string().optional(),
+  mods: z.record(z.string(), z.array(z.string())).optional(),
+  dispatchable: z.array(z.record(z.string(), z.unknown())).optional(),
+  ready_gates: z.array(readyGate).optional(),
+  stages: z.array(stage).optional(),
+  orphans: z.array(z.record(z.string(), z.unknown())).optional(),
+  pr_state: z
+    .looseObject({
+      status: z.string().optional(),
+      entries: z.array(z.record(z.string(), z.unknown())).optional(),
+    })
+    .optional(),
+  team_state: z
+    .looseObject({ present: z.string().optional(), hint: z.string().optional() })
+    .optional(),
+  state_backend: z.string().optional(),
+  definition_dir: z.string().optional(),
+  entity_dir: z.string().optional(),
+  entity_dir_present: z.string().optional(),
+  state_remote: z.string().optional(),
+  sandbox: z.string().optional(),
+  next_id: z.string().optional(),
+});
+export type BootStatus = z.output<typeof bootStatus>;
+
+export const gatesTimelineData = z.object({
+  workflowDir: z.string(),
+  gates: z.array(readyGate),
+});
+export type GatesTimelineData = z.output<typeof gatesTimelineData>;
+
+export const spacedockSettings = defineSettings({
+  id: "spacedock",
+  scope: "host",
+  version: 1,
+  schema: z.object({
+    binaryPath: z.string().default(""),
+    skillsDir: z.string().default(""),
+    foProvider: z.string().default(""),
+  }),
+});
+
+export const statusRpc = defineRpc({
+  name: "spacedock.status",
+  input: z.object({ cwd: z.string(), bin: z.string().optional() }),
+  output: z.discriminatedUnion("found", [
+    z.object({ found: z.literal(false), error: z.string().optional() }),
+    z.object({
+      found: z.literal(true),
+      workflowDir: z.string(),
+      boot: bootStatus,
+    }),
+  ]),
+});
+
+export const gateRecordRpc = defineRpc({
+  name: "spacedock.gate.record",
+  input: z.object({
+    workflowDir: z.string(),
+    entity: z.string(),
+    decision: z.enum(["approve", "revise", "hold"]),
+    reason: z.string().optional(),
+    consume: z.boolean().optional(),
+    agentId: z.string().optional(),
+    bin: z.string().optional(),
+  }),
+  output: z.object({
+    ok: z.boolean(),
+    output: z.string(),
+    gates: z.array(readyGate).optional(),
+  }),
+});
+
+export const launchFoRpc = defineRpc({
+  name: "spacedock.fo.launch",
+  input: z.object({
+    workspaceId: z.string(),
+    provider: z.string().optional(),
+    task: z.string().optional(),
+    bin: z.string().optional(),
+    skillsDir: z.string().optional(),
+  }),
+  output: z.object({
+    ok: z.boolean(),
+    agentId: z.string().optional(),
+    workflowDir: z.string().optional(),
+    error: z.string().optional(),
+  }),
+});
