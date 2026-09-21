@@ -57,13 +57,7 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(judgeGateRpc, async (input) => {
-    const apiKey = input.apiKey || process.env.TYPESAFE_API_KEY;
-    if (!apiKey) {
-      return {
-        ok: false,
-        error: "no TypeSafe API key — set typesafeApiKey in plugin settings",
-      };
-    }
+    const apiKey = input.apiKey || process.env.TYPESAFE_API_KEY || undefined;
     const gates = await readyGates(input.workflowDir, input.bin).catch(() => []);
     const gate = gates.find(
       (g) => g.slug === input.entity || g.id === input.entity,

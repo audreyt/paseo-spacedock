@@ -64,7 +64,7 @@ export function SpacedockSettings({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             label="TypeSafe API key"
-            hint="Used by the Judge button (api.typesafe.ai). Stored in host-scoped plugin settings; also read from TYPESAFE_API_KEY on the daemon."
+            hint="Optional. Needed for api.typesafe.ai; local TypeSafe-compatible servers usually need none. Also read from TYPESAFE_API_KEY on the daemon."
             placeholder="ts-…"
             initialValue={draft.typesafeApiKey}
             onChangeText={(text) =>

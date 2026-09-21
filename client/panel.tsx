@@ -51,6 +51,7 @@ function GateCard({
     risk?: number | null;
     stamp?: string;
     policy?: { mode: string; text: string };
+    model?: string;
   } | null>(null);
   const decide = useMutation({
     mutationFn: (decision: Decision) => {
@@ -175,7 +176,7 @@ function GateCard({
       </View>
       {verdict?.verdict ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-          Jev suggests {verdict.verdict} (confidence{" "}
+          {verdict.model ?? "Judge"} suggests {verdict.verdict} (confidence{" "}
           {verdict.confidence?.toFixed(2) ?? "?"}
           {verdict.evidence != null
             ? `, evidence ${verdict.evidence.toFixed(2)}`

@@ -141,7 +141,7 @@ export interface JudgeResult {
 
 export async function judgeGate(
   state: Record<string, unknown>,
-  apiKey: string,
+  apiKey: string | undefined,
   opts: { baseUrl?: string; model?: string; fresh?: boolean } = {},
 ): Promise<JudgeResult> {
   const baseUrl = (
@@ -151,12 +151,15 @@ export async function judgeGate(
   ).replace(/\/+$/, "");
   const model =
     opts.model || process.env.TYPESAFE_DEFAULT_MODEL || "jev-latest";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
   const response = await fetch(`${baseUrl}/v1/systemone`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       model,
       state,
@@ -194,7 +197,12 @@ export async function judgeGate(
     }),
   });
   if (!response.ok) {
-    throw new Error(`typesafe ${response.status}: ${await response.text()}`);
+    const body = await response.text();
+    const hint =
+      response.status === 401 || response.status === 403
+        ? " — set typesafeApiKey in plugin settings or TYPESAFE_API_KEY on the daemon"
+        : "";
+    throw new Error(`typesafe ${response.status}: ${body}${hint}`);
   }
   const body = (await response.json()) as {
     model: string;

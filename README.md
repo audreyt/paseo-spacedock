@@ -52,7 +52,8 @@ two, so a raw `0.67` is stamped as `risk=0.33`.
 The judge resolves its credentials and endpoint in this order:
 
 - **API key** — `typesafeApiKey` in plugin settings, falling back to the
-  `TYPESAFE_API_KEY` environment variable on the daemon.
+  `TYPESAFE_API_KEY` environment variable on the daemon. Optional; needed for
+  `api.typesafe.ai`, but local TypeSafe-compatible servers usually need none.
 - **Base URL** — `typesafeBaseUrl` in plugin settings, falling back to
   `TYPESAFE_BASE_URL` on the daemon, then `https://api.typesafe.ai`. Empty means
   the public endpoint.
@@ -61,7 +62,16 @@ The judge resolves its credentials and endpoint in this order:
 
 Any server implementing `POST /v1/systemone` with the TypeSafe request/response
 shape works as a base URL — point it at a local TypeSafe-compatible server if
-you run one.
+you run one. For example, against a local server with no key:
+
+```
+TYPESAFE_BASE_URL=http://127.0.0.1:8001
+TYPESAFE_DEFAULT_MODEL=<your model>
+```
+
+The daemon process must actually have those env vars — a daemon launched by
+the desktop app does not read your shell rc, so either restart the daemon from
+a shell that has them or set base URL/model in the plugin settings screen.
 
 ## Install
 

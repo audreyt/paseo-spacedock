@@ -24,7 +24,9 @@ export function GatesCard({
   const judge = useRpc(judgeGateRpc);
   const settings = useSettings(spacedockSettings);
   const [error, setError] = useState<string | null>(null);
-  const [verdicts, setVerdicts] = useState<Record<string, string>>({});
+  const [verdicts, setVerdicts] = useState<
+    Record<string, { model?: string; text: string }>
+  >({});
   const decide = useMutation({
     mutationFn: (input: { entity: string; decision: Decision }) =>
       record({
@@ -65,7 +67,7 @@ export function GatesCard({
         const policy = result.policy ? ` · ${result.policy.text}` : "";
         setVerdicts((v) => ({
           ...v,
-          [entity]: `${stamp}${policy}`,
+          [entity]: { model: result.model, text: `${stamp}${policy}` },
         }));
       } else if (!result.ok) {
         setError(result.error ?? "judge failed");
@@ -164,7 +166,8 @@ export function GatesCard({
           </Pressable>
           {verdicts[gate.slug || gate.id] ? (
             <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-              Jev: {verdicts[gate.slug || gate.id]}
+              {verdicts[gate.slug || gate.id].model ?? "judge"}:{" "}
+              {verdicts[gate.slug || gate.id].text}
             </Text>
           ) : null}
         </View>
