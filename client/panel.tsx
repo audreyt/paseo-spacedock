@@ -277,6 +277,7 @@ export function SpacedockPanel({
   const [bsDir, setBsDir] = useState("");
   const [bsLabel, setBsLabel] = useState("");
   const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
+  const [bootstrapWarning, setBootstrapWarning] = useState<string | null>(null);
   const bsInitRef = useRef(false);
 
   const query = useQuery({
@@ -342,12 +343,21 @@ export function SpacedockPanel({
         } else if (result.agentError) {
           parts.push(` · agent not launched: ${result.agentError}`);
         }
+        if (result.notes && result.notes.length > 0) {
+          parts.push(` · ${result.notes.join(" · ")}`);
+        }
         setBootstrapMessage(parts.join(""));
+        if (result.warning) {
+          setBootstrapWarning(result.warning);
+        } else {
+          setBootstrapWarning(null);
+        }
         queryClient.invalidateQueries({
           queryKey: ["spacedock-status", directory, bin],
         });
       } else {
         setBootstrapMessage(result.error ?? "bootstrap failed");
+        setBootstrapWarning(null);
       }
     },
     onError: (error) => setBootstrapMessage(String(error)),
@@ -469,6 +479,9 @@ export function SpacedockPanel({
                 for a richer tailoring pass).
               </Text>
             ) : null}
+            {data.suggest?.note ? (
+              <Text style={styles.section}>{data.suggest.note}</Text>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Bootstrap workflow"
@@ -490,6 +503,11 @@ export function SpacedockPanel({
             </Pressable>
             {bootstrapMessage ? (
               <Text style={styles.section}>{bootstrapMessage}</Text>
+            ) : null}
+            {bootstrapWarning ? (
+              <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
+                {bootstrapWarning}
+              </Text>
             ) : null}
           </View>
         )

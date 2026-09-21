@@ -133,6 +133,108 @@ function isGitRepo(cwd: string): boolean {
   }
 }
 
+function gitRoot(cwd: string): string {
+  try {
+    const out = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    const root = out.trim();
+    return root || cwd;
+  } catch {
+    return cwd;
+  }
+}
+
+export interface Hidden {
+  kind: "spacedock-prune" | "git-ignored";
+  pattern: string;
+  source?: string;
+  line?: number;
+}
+
+// Spacedock discovery prunes any directory whose BASENAME appears in the repo
+// root .gitignore as a line ending in `/` (comments and `!` lines skipped; only
+// the basename of the pattern matters). Lines not ending in `/` do not prune.
+function gitignorePrunedBasenames(root: string): Map<string, { pattern: string; line: number }> {
+  const map = new Map<string, { pattern: string; line: number }>();
+  const path = join(root, ".gitignore");
+  if (!existsSync(path)) return map;
+  let content: string;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch {
+    return map;
+  }
+  content.split("\n").forEach((rawLine, idx) => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith("!")) return;
+    if (!line.endsWith("/")) return;
+    // basename of the pattern (strip leading /, **/, trailing /)
+    const stripped = line.replace(/^\//, "").replace(/^\*\*\//, "").replace(/\/$/, "");
+    const seg = stripped.split("/").at(-1);
+    if (seg && !map.has(seg)) {
+      map.set(seg, { pattern: rawLine, line: idx + 1 });
+    }
+  });
+  return map;
+}
+
+export function workflowDirHidden(cwd: string, dir: string): Hidden | null {
+  const root = gitRoot(cwd);
+  // Canonicalize cwd so the relative path matches git's canonical root (macOS
+  // /var → /private/var symlink would otherwise break the segment walk).
+  let realCwd: string;
+  try {
+    realCwd = realpathSync(cwd);
+  } catch {
+    realCwd = cwd;
+  }
+  const rel = relative(root, resolve(realCwd, dir));
+  if (rel.startsWith("..") || isAbsolute(rel)) return null;
+  // Spacedock-prune check: any path segment of dir (relative to gitRoot) in the
+  // pruned-basename set.
+  const pruned = gitignorePrunedBasenames(root);
+  for (const seg of rel.split("/")) {
+    if (!seg) continue;
+    const hit = pruned.get(seg);
+    if (hit) {
+      return {
+        kind: "spacedock-prune",
+        pattern: hit.pattern,
+        source: ".gitignore",
+        line: hit.line,
+      };
+    }
+  }
+  // git check-ignore check
+  try {
+    const target = join(resolve(realCwd, dir), "README.md");
+    const out = execFileSync(
+      "git",
+      ["-C", cwd, "check-ignore", "-v", "--no-index", "--", target],
+      { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
+    );
+    // format: <source>:<line>:<pattern>\t<path>
+    const m = out.match(/^([^:]+):(\d+):([^\t]+)\t/);
+    if (m) {
+      const pattern = m[3].trim();
+      // A `!` negation pattern means the path is NOT ignored; check-ignore -v
+      // still prints it (and exits 0) when it is the last matching pattern.
+      if (pattern.startsWith("!")) return null;
+      return {
+        kind: "git-ignored",
+        pattern,
+        source: m[1],
+        line: Number(m[2]),
+      };
+    }
+  } catch {
+    // exit non-zero = not ignored → null
+  }
+  return null;
+}
+
 function ensureGitRepo(cwd: string): void {
   if (!isGitRepo(cwd)) {
     execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -221,6 +323,8 @@ stages:
     - name: review
       gate: true
       feedback-to: draft
+      context-sections:
+        - Standing checks
     - name: polish
     - name: done
       terminal: true
@@ -298,6 +402,12 @@ The FO/ensign operating contract already governs generic stage semantics and pro
 - **No layers by default.** The base shape touches no repo and waits on no external event, so no structural layers fire. Variants that need them (e.g. outreach's \`watching\` stage) activate the layer through the variant, not the base.
 - **Variant menu.** Common end-use shapes are refinement with adjusted stages and a different entity body — \`outreach\`, \`integration\`, \`content-production\`, \`prd-authoring\` (see \`## Adoption\` → Surface variants). A variant changes the stage list and snippet, never the underlying draft → review → ship structure.
 
+## Standing checks
+
+The \`review\` stage loads these via \`context-sections: [Standing checks]\` so dispatch carries them with the gate. A fail on any one is needs-attention.
+
+- Replace with the checks every gate applies; a fail on any one is needs-attention.
+
 ## Workflow State
 
 View the workflow overview:
@@ -370,11 +480,39 @@ export function inferSuggestion(
   } else {
     mission = `Track work in ${basename(cwd)} through review`;
   }
-  let slug = title ? deriveSlug(title) : "workflow";
-  let dir = `docs/${slug}`;
-  if (existsSync(join(cwd, dir, "README.md"))) {
-    slug = `${slug}-workflow`;
-    dir = `docs/${slug}`;
+  const slug = title ? deriveSlug(title) : "workflow";
+  // Candidate locations, in preference order. The `-workflow` suffix marks the
+  // directory as a tracker, distinct from the repo's own content dirs.
+  const candidates: string[] = [
+    `docs/${slug}-workflow`,
+    `workflows/${slug}`,
+    `${slug}-workflow`,
+  ];
+  // Append -2, -3 on collision for the preferred docs/ candidate.
+  if (existsSync(join(cwd, candidates[0], "README.md"))) {
+    for (let n = 2; n <= 9; n++) {
+      const alt = `docs/${slug}-workflow-${n}`;
+      if (!existsSync(join(cwd, alt, "README.md"))) {
+        candidates[0] = alt;
+        break;
+      }
+    }
+  }
+  let dir = candidates[0];
+  let hidden: Hidden | null = null;
+  let note: string | undefined;
+  for (const candidate of candidates) {
+    const h = workflowDirHidden(cwd, candidate);
+    if (!h) {
+      dir = candidate;
+      break;
+    }
+    if (!hidden) hidden = h;
+  }
+  if (dir === candidates[0]) {
+    // preferred candidate was chosen; no note needed
+  } else if (hidden) {
+    note = `docs/ is git-ignored (\`${hidden.pattern}\` in .gitignore) and Spacedock discovery prunes it; suggesting ${dir} instead. Bootstrap can also fix the .gitignore rule if you keep a docs/ path.`;
   }
   const skillFound = resolveSkillPath("commission", opts.skillsDir) !== null;
   return {
@@ -383,6 +521,8 @@ export function inferSuggestion(
     entityLabel: "task",
     gitRepo: isGitRepo(cwd),
     skillFound,
+    hidden: hidden ?? null,
+    note,
   };
 }
 
@@ -393,7 +533,13 @@ export async function scaffoldWorkflow(input: {
   entityLabel?: string;
   bin?: string;
 }): Promise<
-  | { ok: true; workflowDir: string; created: string[] }
+  | {
+      ok: true;
+      workflowDir: string;
+      created: string[];
+      notes: string[];
+      warning?: string;
+    }
   | { ok: false; error: string }
 > {
   const { cwd, dir, mission, bin } = input;
@@ -443,6 +589,86 @@ export async function scaffoldWorkflow(input: {
   if (ensureGitignoreEntry(cwd)) {
     created.push(".gitignore");
   }
+
+  const notes: string[] = [];
+  let warning: string | undefined;
+
+  // Visibility: a bare <seg>/ rule in the root .gitignore prunes Spacedock
+  // discovery and hides the tree from git. If the first segment of dir matches
+  // one of the simple forms, rewrite that exact line to <seg>/* and append
+  // negations for the workflow dir.
+  const hidden = workflowDirHidden(cwd, dir);
+  if (hidden) {
+    const firstSeg = dir.split("/")[0];
+    const root = gitRoot(cwd);
+    const rootGitignore = join(root, ".gitignore");
+    const bareForms = [`${firstSeg}/`, `/${firstSeg}/`];
+    const starForms = [`${firstSeg}/*`, `/${firstSeg}/*`];
+    // workflowDirHidden reports source ".gitignore" only for the root .gitignore
+    // (gitignorePrunedBasenames reads the root); a nested .gitignore surfaces as
+    // a git-ignored kind instead.
+    const isRootGitignore = hidden.source === ".gitignore" && existsSync(rootGitignore);
+    if (isRootGitignore && bareForms.includes(hidden.pattern)) {
+      const finalPattern = `${hidden.pattern.replace(/\/$/, "")}/*`;
+      // Rewrite the exact line in the root .gitignore
+      const content = readFileSync(rootGitignore, "utf8");
+      const lines = content.split("\n");
+      const lineIdx = (hidden.line ?? 0) - 1;
+      if (lineIdx >= 0 && lineIdx < lines.length && lines[lineIdx] === hidden.pattern) {
+        lines[lineIdx] = finalPattern;
+        const block = [
+          "",
+          "# Spacedock: keep the workflow tracker visible. A bare `<seg>/` rule prunes",
+          "# discovery and hides the tree from git; `<seg>/*` plus these negations does not.",
+          `!${dir}/`,
+          `!${dir}/**`,
+        ].join("\n");
+        const text = lines.join("\n");
+        if (!text.includes(`!${dir}/`)) {
+          writeFileSync(
+            rootGitignore,
+            `${text}${text.endsWith("\n") ? "" : "\n"}${block}\n`,
+          );
+        } else {
+          writeFileSync(rootGitignore, `${text}\n`);
+        }
+        notes.push(`rewrote .gitignore rule ${hidden.pattern} → ${finalPattern} and un-ignored ${dir}`);
+      }
+    } else if (isRootGitignore && starForms.includes(hidden.pattern)) {
+      // Already <seg>/* form: just append negations if missing
+      const content = readFileSync(rootGitignore, "utf8");
+      if (!content.includes(`!${dir}/`)) {
+        const block = [
+          "",
+          "# Spacedock: keep the workflow tracker visible. A bare `<seg>/` rule prunes",
+          "# discovery and hides the tree from git; `<seg>/*` plus these negations does not.",
+          `!${dir}/`,
+          `!${dir}/**`,
+        ].join("\n");
+        writeFileSync(
+          rootGitignore,
+          `${content}${content.endsWith("\n") ? "" : "\n"}${block}\n`,
+        );
+        notes.push(`un-ignored ${dir} in .gitignore (parent rule ${hidden.pattern} kept)`);
+      }
+    }
+    // Re-check after the fix
+    const stillHidden = workflowDirHidden(cwd, dir);
+    if (stillHidden) {
+      warning = `${dir} is hidden from Spacedock discovery by ${stillHidden.pattern} (${stillHidden.source}:${stillHidden.line ?? "?"}); un-ignore it or choose another directory`;
+    }
+  }
+
+  // Confirm discovery can see the workflow dir
+  const discover = runSync(resolveBin(bin), ["status", "--discover"], cwd);
+  if (discover.code === 0) {
+    const realTarget = realpathSync(target);
+    if (!discover.stdout.includes(realTarget)) {
+      const msg = `${dir} is not visible to \`spacedock status --discover\` (likely git-ignored); un-ignore it or choose another directory`;
+      warning = warning ? `${warning} · ${msg}` : msg;
+    }
+  }
+
   const validate = runSync(resolveBin(bin), [
     "status",
     "--validate",
@@ -460,6 +686,8 @@ export async function scaffoldWorkflow(input: {
     ok: true,
     workflowDir: realpathSync(target),
     created,
+    notes,
+    warning,
   };
 }
 
@@ -477,6 +705,7 @@ export async function launchCommissionAgent(
 ): Promise<{ agentId: string } | { error: string }> {
   const bin = resolveBin(input.bin);
   const skillPath = resolveSkillPath("commission", input.skillsDir);
+  const root = gitRoot(input.cwd);
   const lines = [
     `You are commissioning a Spacedock workflow for the repository at ${input.cwd}.`,
     `A minimal, valid workflow was just scaffolded at ${input.workflowDir}: README.md with \`commissioned-by: spacedock@…\` frontmatter and refinement-shaped stages (draft → review (gate) → polish → done). Your job is to tailor it to this repository so the first officer can run it well.`,
@@ -487,6 +716,10 @@ export async function launchCommissionAgent(
     `- Never remove or alter the \`commissioned-by:\` line. Keep \`state: $inline\` unless this is a code repo shipped through PRs, in which case follow the split-root journey in the commission skill.`,
     `- Do not create entities unless the repo already has obvious work items; then seed at most 3 with \`\${SPACEDOCK_BIN:-spacedock} new <slug> --workflow-dir ${input.workflowDir} < stub\`.`,
     `- Finish with \`\${SPACEDOCK_BIN:-spacedock} status --validate --workflow-dir ${input.workflowDir}\` and \`\${SPACEDOCK_BIN:-spacedock} status --boot --json --identify\`; both must succeed. Do not commit; leave the changes for the captain to review. Report what you changed in five lines or fewer.`,
+    `- This repository is already versioned at ${root}. Never run \`git init\` inside a subdirectory; commit from the root.`,
+    `- If the repo already organises its work items as directories or files, make each entity a tracker that points at them: the entity slug is the existing item's directory or file name, canonical files stay where they are, and the workflow directory holds only Spacedock state, gate notes and pointers. Say so in the README and never copy artifacts into the workflow directory.`,
+    `- If the repo's AGENTS.md or README defines standing review criteria, put them under a dedicated \`## <Heading>\` section in the workflow README and reference it from the gate stage with \`context-sections: [<Heading>]\` so dispatch loads them with the stage.`,
+    `- Keep the workflow directory visible: the root .gitignore must not contain a bare \`<dir>/\` rule for any segment of its path (Spacedock discovery prunes those basenames); use \`<dir>/*\` plus \`!\` negations if the parent must stay ignored.`,
   ];
   if (skillPath) {
     lines.push(

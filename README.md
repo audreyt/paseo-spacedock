@@ -6,9 +6,13 @@ decision layer inside Paseo: agents do the work, the captain records the calls.
 Requires the `spacedock` binary on the daemon host and a commissioned workflow
 (a directory whose README frontmatter carries `commissioned-by: spacedock@…`).
 If the workspace has none, the panel offers to **bootstrap** one: it infers a
-mission and `docs/<slug>/` target from the repo's README/AGENTS.md, scaffolds a
-validated refinement-shaped workflow, and can launch a Commission agent to
-tailor it.
+mission and `docs/<slug>-workflow/` target from the repo's README/AGENTS.md,
+scaffolds a validated refinement-shaped workflow, and can launch a Commission
+agent to tailor it. The default location `docs/<slug>-workflow/` is a tracker,
+distinct from the repo's own content dirs. A bare `<dir>/` line in the root
+`.gitignore` hides the workflow from Spacedock discovery — bootstrap suggests
+another location or rewrites the rule to `<dir>/*` with negations, and warns if
+it can't.
 
 ## What it does
 
@@ -16,9 +20,9 @@ tailor it.
   entities, and every gate awaiting the captain with Approve / Revise / Hold
   plus an optional recorded reason. Approvals use `gate record --consume`.
 - **Workflow bootstrap** — when no commissioned workflow is found, the panel
-  infers a mission and `docs/<slug>/` target from the repo's README/AGENTS.md,
-  scaffolds a validated refinement-shaped workflow, and can launch a Commission
-  agent to tailor it.
+  infers a mission and `docs/<slug>-workflow/` target from the repo's
+  README/AGENTS.md, scaffolds a validated refinement-shaped workflow, and can
+  launch a Commission agent to tailor it.
 - **Timeline card** — when an agent's turn ends with gates pending, a
   `spacedock-gates` row is appended to its timeline; decisions can be recorded
   inline without opening the panel.

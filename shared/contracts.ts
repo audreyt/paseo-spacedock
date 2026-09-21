@@ -73,6 +73,16 @@ export const workflowSuggestion = z.object({
   entityLabel: z.string(),
   gitRepo: z.boolean(),
   skillFound: z.boolean(),
+  hidden: z
+    .object({
+      kind: z.enum(["spacedock-prune", "git-ignored"]),
+      pattern: z.string(),
+      source: z.string().optional(),
+      line: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
+  note: z.string().optional(),
 });
 export type WorkflowSuggestion = z.output<typeof workflowSuggestion>;
 
@@ -113,6 +123,8 @@ export const bootstrapRpc = defineRpc({
     agentId: z.string().optional(),
     agentError: z.string().optional(),
     error: z.string().optional(),
+    notes: z.array(z.string()).optional(),
+    warning: z.string().optional(),
   }),
 });
 

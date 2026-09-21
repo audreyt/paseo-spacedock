@@ -166,6 +166,8 @@ export default function contribute(server: PluginServerContext) {
       created: scaffold.created,
       agentId,
       agentError,
+      notes: scaffold.notes,
+      warning: scaffold.warning,
     };
   });
 
