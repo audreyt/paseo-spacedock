@@ -1,5 +1,7 @@
 # paseo-spacedock
 
+Public domain under [CC0 1.0](LICENSE), plus the patent grant in [PATENTS.md](PATENTS.md).
+
 A [Paseo](https://paseo.sh) plugin that puts [Spacedock](https://github.com/spacedock-dev/spacedock)'s
 decision layer inside Paseo: agents do the work, the captain records the calls.
 
@@ -114,20 +116,26 @@ tablet that syncs over Dropbox/Drive:
   Briefing data, so `--recommend` is required; `--recommend reject` also
   requires `--reason`. `--gloss` maps English source strings to zh
   renderings; unmapped source text is tagged `[runin: 原文:]` in zh spans.
-- `remarkable-intake.py ... --outbox DIR --lantern PATH` runs the projector,
-  renders HTML with the given Lantern-compatible renderer,
-  prints a Move-portrait PDF with headless Chrome, and drops it in
-  `--outbox`. `remarkable-intake.py inbox --dir DIR [--since STATE]`
-  reports newly returned files with the matching `gate record` template.
+  `-o` inside the workflow dir is refused (phantom-entity guard).
+- `remarkable-intake.py ... --outbox DIR --lantern PATH [--print-lang
+  both|en|zh]` runs the projector, renders HTML with the given
+  Lantern-compatible renderer, prints a Move-portrait PDF with headless
+  Chrome (virtual-time budget so webfonts embed; CJK prints in the
+  renderer's declared print face), and drops it in `--outbox`.
+  `remarkable-intake.py inbox --dir DIR [--since STATE]` reports newly
+  returned files with the matching `gate record` template.
 - `gate-loop.py --inbox DIR --workflow-dir DIR [--auto-record]` closes the
   loop: for each new annotated PDF it reads the captain's marks — typed
-  PDF annotations via pypdf, else a rendered page through a local VLM
-  (`--reader ollama --reader-model <vision-capable>`) — parses one
-  unambiguous decision, and drafts `gate record --actor person:captain`
-  (`--consume` on approve; present-gate "reject" maps to record "revise").
-  Only typed annotations auto-record: they are captain-added bytes by
-  construction. VLM reads always draft for human confirmation, because a
-  rasterized page cannot distinguish printed prompt text from handwritten
+  PDF annotations via pypdf, else a rendered page through a vision reader
+  (default `--reader splash`: OpenAI-compatible `image_url` turns against
+  `--reader-url`, model auto-discovered from `/v1/models`;
+  `--reader ollama --reader-model <vision-capable>` is the fallback) —
+  parses one unambiguous decision, and drafts `gate record --actor
+  person:captain` (`--consume` on approve; present-gate "reject" maps to
+  record "revise"; the reason stamps the source file plus the transcribed
+  mark). Only typed annotations auto-record: they are captain-added bytes
+  by construction. VLM reads always draft for human confirmation, because
+  a rasterized page cannot distinguish printed prompt text from handwritten
   marks. Conflicting or missing marks stay human-read, never auto-recorded.
   Processed files move to `done/`, so re-polls are idempotent. Printed
   page text is outbound content and is never parsed as a decision.
@@ -217,3 +225,21 @@ The 12 laws (from `LAWS.bend`):
 - **can_delegate** — the policy is not vacuous: some fresh, well-supported
   judgment is delegated.
 - **verdict_roundtrip** — verdict names round-trip through the wire format.
+
+## License
+
+This project is dedicated to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (`CC0-1.0`). The legal text is [LICENSE](LICENSE), copied verbatim. The same text is in [LICENSES/CC0-1.0.txt](LICENSES/CC0-1.0.txt) for license scanners. This section explains the dedication. It does not change the legal text.
+
+The dedication covers the files in this repository: source, docs, scripts, proofs, and generated code.
+
+You may copy, change, and share this project for any purpose, including commercial use. Giving credit is optional. Publishing your changes is optional. Asking permission is unnecessary. There is no warranty, and there is no endorsement of anyone who uses the project.
+
+Where the law allows it, copyright and related rights in these files, including database rights, are waived worldwide for the longest term the law provides. Where a court will not give that waiver effect, the backup license inside CC0 gives each person those same rights.
+
+Patent rights are granted in [PATENTS.md](PATENTS.md). That grant is permanent, worldwide, royalty-free, and irrevocable. It covers patent claims the rights holder can license when this project infringes them. Trademarks and names stay with their owners. Patents that belong to other people stay with those people.
+
+Work from other people stays under its own terms. Packages installed from a registry are not part of this dedication.
+
+Copies of this repository already received under the Apache License 2.0 stay under that license. This dedication applies to the project as published with this LICENSE file.
+
+No person is named in the license. Keep personal data out of the tree. Contribution terms are in [CONTRIBUTING.md](CONTRIBUTING.md).

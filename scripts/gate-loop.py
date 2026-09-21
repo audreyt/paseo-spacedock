@@ -1,25 +1,33 @@
+# Public domain under CC0 1.0. See LICENSE and PATENTS.md.
+# SPDX-FileCopyrightText: NONE
+# SPDX-License-Identifier: CC0-1.0
+
 """Automatic return path for the e-ink gate intake.
 
 Watches INBOX for annotated gate PDFs and turns the captain's marks into a
 `spacedock gate record` decision:
 
-1. Extract PDF annotations / page text with pypdf (typed marks).
-2. If no text marks, render page 1 and read handwriting with a local VLM
-   (default: `ollama run <model>` with image input).
+1. Extract typed PDF annotation contents with pypdf.
+2. If no annotations, render page 1 and read marks with a vision reader
+   (default: local Splash OpenAI-compatible chat completions with image_url;
+   `ollama` + a vision-capable model is the fallback).
 3. Parse an unambiguous decision (approve | revise | hold + reason).
 4. With --auto-record, execute `gate record --actor person:captain`
-   (--consume on approve); otherwise print the command for a human.
+   (--consume on approve) — annotation reads only. VLM reads always draft
+   for human confirmation, because a rasterized page cannot distinguish
+   printed prompt text from handwritten marks.
 5. Move processed files to DONE so the loop is idempotent.
 
 Present-gate "reject" maps to record "revise" (bounce back with findings).
 
 Usage:
   gate-loop.py --inbox DIR --workflow-dir DIR [--entity SLUG]
-      [--auto-record] [--reader ollama --reader-model MODEL]
-      [--since STATE] [--done DIR]
+      [--auto-record] [--reader splash|ollama] [--reader-url URL]
+      [--reader-model MODEL] [--since STATE] [--done DIR]
 """
 import json
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -64,28 +72,63 @@ REASON: <one line, or "-" >
 """.strip()
 
 
-def vlm_read(pdf, reader, model):
-    with tempfile.TemporaryDirectory() as td:
-        run(["pdftoppm", "-png", "-r", "150", "-f", "1", "-l", "1",
-             str(pdf), f"{td}/p"])
-        img = f"{td}/p-1.png"
-        if reader == "ollama":
-            return ollama_api(img, model)
-        raise SystemExit(f"unknown --reader {reader}")
+def render_page(pdf):
+    td = tempfile.mkdtemp()
+    run(["pdftoppm", "-png", "-r", "150", "-f", "1", "-l", "1",
+         str(pdf), f"{td}/p"])
+    return f"{td}/p-1.png"
+
+
+def vlm_read(pdf, reader, url, model):
+    img = render_page(pdf)
+    if reader == "splash":
+        return splash_api(img, url, model or splash_first_model(url))
+    if reader == "ollama":
+        return ollama_api(img, model or "gemma4:12b-nvfp4")
+    raise SystemExit(f"unknown --reader {reader}")
+
+
+def _post_json(url, payload, timeout=240):
+    import urllib.request
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def splash_first_model(url):
+    import urllib.request
+    with urllib.request.urlopen(url + "/v1/models", timeout=15) as r:
+        d = json.loads(r.read())
+    return d["data"][0]["id"]
+
+
+def splash_api(img, url, model):
+    import base64
+    b64 = base64.b64encode(Path(img).read_bytes()).decode()
+    d = _post_json(url + "/v1/chat/completions", {
+        "model": model,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": READ_PROMPT},
+            {"type": "image_url",
+             "image_url": {"url": "data:image/png;base64," + b64}},
+        ]}],
+        "max_tokens": 1024,
+        "stream": False,
+    })
+    return d["choices"][0]["message"]["content"] or ""
 
 
 def ollama_api(img, model):
     import base64
-    import urllib.request
-    data = json.dumps({
+    b64 = base64.b64encode(Path(img).read_bytes()).decode()
+    d = _post_json("http://127.0.0.1:11434/api/generate", {
         "model": model,
         "prompt": READ_PROMPT,
-        "images": [base64.b64encode(Path(img).read_bytes()).decode()],
+        "images": [b64],
         "stream": False,
-    }).encode()
-    req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=data)
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read())["response"]
+    })
+    return d["response"]
 
 
 def parse_decision(text):
@@ -118,9 +161,10 @@ def main():
     wf = Path(rest[rest.index("--workflow-dir") + 1])
     entity_ov = rest[rest.index("--entity") + 1] if "--entity" in rest else None
     auto = "--auto-record" in rest
-    reader = rest[rest.index("--reader") + 1] if "--reader" in rest else "ollama"
-    model = (rest[rest.index("--reader-model") + 1]
-             if "--reader-model" in rest else "gemma4:12b-nvfp4")
+    reader = rest[rest.index("--reader") + 1] if "--reader" in rest else "splash"
+    url = (rest[rest.index("--reader-url") + 1] if "--reader-url" in rest
+           else "http://127.0.0.1:8000")
+    model = rest[rest.index("--reader-model") + 1] if "--reader-model" in rest else None
     state = Path(rest[rest.index("--since") + 1]) if "--since" in rest else None
     done = Path(rest[rest.index("--done") + 1]
                 if "--done" in rest else inbox / "done")
@@ -141,10 +185,11 @@ def main():
             source = "pdf-text"
             text = marks
         else:
-            source = f"vlm:{model}"
-            text = vlm_read(pdf, reader, model)
+            source = f"{reader}-vlm"
+            text = vlm_read(pdf, reader, url, model)
         decision, reason = parse_decision(text)
-        stamp = f"rm:{pdf.name}: {reason}"[:200]
+        evidence = marks.strip().splitlines()[0][:120] if marks.strip() else reason
+        stamp = f"rm:{pdf.name}: {evidence}"[:220]
         cmd = ["spacedock", "gate", "record", entity,
                "--decision", decision, "--actor", "person:captain",
                "--reason", stamp]
@@ -164,7 +209,7 @@ def main():
             why = ("VLM reads need eyes; not auto-recorded"
                    if source != "pdf-text" else "draft:")
             print(f"{pdf.name}: {why} {decision} ({source}):")
-            print("  " + " ".join(cmd))
+            print("  " + shlex.join(cmd))
     if state:
         state.write_text(json.dumps(sorted(seen)))
 

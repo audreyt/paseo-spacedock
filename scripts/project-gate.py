@@ -5,6 +5,8 @@ Emits: gate-spine.md (one en:/zh: pair per block) for lantern.py.
 The Recommend line is FO judgment, not Briefing data: --recommend is required.
 --gloss maps English source strings to zh renderings; unmapped source text is
 tagged [runin: 原文:] in zh spans instead of leaking silently.
+-o inside the workflow dir is refused: Spacedock would discover the spine
+as a phantom entity.
 Usage: project_gate.py <workflow-dir> <entity-slug> --recommend approve|reject
        [--reason TEXT] [-o spine.md] [--gloss gloss.json]
 """
@@ -64,6 +66,10 @@ def parse_args(argv):
     dest = Path("gate-spine.md")
     if "-o" in rest:
         dest = Path(rest[rest.index("-o") + 1])
+    wf_res, dest_res = wf.resolve(), dest.resolve()
+    if dest_res == wf_res or wf_res in dest_res.parents:
+        raise SystemExit(f"refusing -o inside workflow dir ({dest}): "
+                         f"Spacedock would discover it as a phantom entity")
     gloss = {}
     if "--gloss" in rest:
         gloss = json.loads(Path(rest[rest.index("--gloss") + 1]).read_text())

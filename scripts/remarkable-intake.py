@@ -4,6 +4,9 @@
    + stage-def Gate content -> bilingual spine.md).
 2. Renders HTML with a Lantern-compatible renderer (--lantern, required).
 3. Prints a Move-portrait PDF with headless Chrome and drops it in OUTBOX.
+   --print-lang selects which language view prints (both|en|zh, default
+   both) by flipping the checked radio on a probe copy; --virtual-time-budget
+   waits for webfonts so CJK embeds instead of falling back.
 
 The reMarkable reads OUTBOX via Dropbox/Drive sync; annotated pages come back
 through INBOX, where gate-loop.py reads the decision and runs
@@ -12,10 +15,11 @@ through INBOX, where gate-loop.py reads the decision and runs
 Usage:
   remarkable-intake.py <workflow-dir> <entity> --recommend approve|reject
       [--reason TEXT] [--gloss gloss.json] --outbox DIR --lantern PATH
-      [--keep-html] [--chrome PATH]
+      [--print-lang both|en|zh] [--keep-html] [--chrome PATH]
   remarkable-intake.py inbox --dir DIR [--since STATE]
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -40,13 +44,16 @@ def forward(argv):
     outbox = Path(rest[rest.index("--outbox") + 1])
     outbox.mkdir(parents=True, exist_ok=True)
     lantern = Path(rest[rest.index("--lantern") + 1])
+    lang = rest[rest.index("--print-lang") + 1] if "--print-lang" in rest else "both"
+    assert lang in ("both", "en", "zh"), "--print-lang must be both|en|zh"
     chrome = (rest[rest.index("--chrome") + 1] if "--chrome" in rest else
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     keep_html = "--keep-html" in rest
     passthrough = [a for a in rest
                    if a not in ("--keep-html",)]
     # strip intake-only flags before passing to project-gate.py
-    for flag, nargs in (("--outbox", 1), ("--lantern", 1), ("--chrome", 1)):
+    for flag, nargs in (("--outbox", 1), ("--lantern", 1), ("--chrome", 1),
+                        ("--print-lang", 1)):
         while flag in passthrough:
             i = passthrough.index(flag)
             del passthrough[i:i + 1 + nargs]
@@ -60,14 +67,30 @@ def forward(argv):
     run([sys.executable, str(lantern), str(spine), "--verify", "--force"],
         cwd=lantern.parent)
     assert html.exists(), "renderer did not emit HTML"
+    probe = work / "print-probe.html"
+    probe.write_text(select_print_lang(html.read_text(), lang))
     pdf = outbox / f"{slug}-gate.pdf"
     run([chrome, "--headless", "--no-sandbox", "--disable-gpu",
+         "--virtual-time-budget=8000",
          f"--print-to-pdf={pdf}", "--no-pdf-header-footer",
-         f"file://{html}"])
+         f"file://{probe}"])
     if keep_html:
         html.rename(outbox / f"{slug}-gate.html")
     print(f"gate PDF: {pdf}")
     return str(pdf)
+
+
+def select_print_lang(html_text, lang):
+    """Flip the checked language radio on a probe copy (EN is the default)."""
+    out, n = re.subn(r'<input type="radio" name="lang" id="lang-[a-z]+" '
+                     r'value="[a-z]+" checked>',
+                     lambda m: m.group(0).replace(" checked>", ">"),
+                     html_text, count=1)
+    assert n == 1, "default checked radio not found"
+    out, n = re.subn(f'id="lang-{lang}" value="{lang}">',
+                     f'id="lang-{lang}" value="{lang}" checked>', out, count=1)
+    assert n == 1, f"lang-{lang} radio not found"
+    return out
 
 
 def inbox(argv):
