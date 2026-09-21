@@ -19,6 +19,12 @@ it can't.
 - **Workspace panel** — stage map (gate/worktree/terminal flags), dispatchable
   entities, and every gate awaiting the captain with Approve / Revise / Hold
   plus an optional recorded reason. Approvals use `gate record --consume`.
+- **New Spacedock** — global Command Center item and sidebar surface. Pick a
+  registered project; the plugin creates a workspace *without* a first agent
+  (`firstAgentContext` omitted) and opens the Spacedock panel. Paseo's built-in
+  New workspace form always starts Chat or a terminal — this skips that dummy
+  session. Once inside a workspace, **Open Spacedock** / `/spacedock` still
+  open the panel on the current workspace.
 - **Workflow bootstrap** — when no commissioned workflow is found, the panel
   infers a mission and `docs/<slug>-workflow/` target from the repo's
   README/AGENTS.md, scaffolds a validated refinement-shaped workflow, and can
@@ -36,7 +42,8 @@ it can't.
   bare provider picks your Paseo agent profile for it, else the provider's
   default model; empty picks the first available provider with a profile or
   default model.
-- **`/spacedock`** slash command and a Command Center item open the panel.
+- **`/spacedock`** slash command and a workspace Command Center item open the
+  panel in an existing workspace.
 - **Settings screen** — binary path override, skills directory, first-officer
   provider (empty = first available), TypeSafe API key, base URL, and judge model.
 

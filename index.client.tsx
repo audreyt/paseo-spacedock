@@ -1,4 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { LaunchSurface } from "./client/launch";
 import { SpacedockPanel } from "./client/panel";
 import { SpacedockSettings } from "./client/settings";
 import { GatesCard } from "./client/timeline";
@@ -10,7 +11,28 @@ export default function contribute(client: PluginClientContext) {
     title: "Spacedock",
     icon: "Anchor",
     context: "workspace",
+    locations: ["workspace", "explorer"],
     Component: SpacedockPanel,
+  });
+
+  client.addSurface("new-spacedock", (props) => (
+    <LaunchSurface {...props} openPanel={client.openPanel.bind(client)} />
+  ));
+  client.addSidebarItem({
+    id: "new-spacedock",
+    title: "New Spacedock",
+    icon: "Anchor",
+    surface: "new-spacedock",
+  });
+  client.addCommandCenterItem({
+    id: "spacedock-new",
+    title: "New Spacedock",
+    icon: "Anchor",
+    keywords: ["gate", "workflow", "first officer", "launch", "new workspace"],
+    context: "global",
+    onSelect({ openSurface }) {
+      openSurface("new-spacedock");
+    },
   });
 
   client.addCommandCenterItem({
