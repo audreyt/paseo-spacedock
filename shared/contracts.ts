@@ -61,6 +61,9 @@ export const spacedockSettings = defineSettings({
     binaryPath: z.string().default(""),
     skillsDir: z.string().default(""),
     foProvider: z.string().default(""),
+    typesafeApiKey: z.string().default(""),
+    typesafeBaseUrl: z.string().default(""),
+    typesafeModel: z.string().default(""),
   }),
 });
 
@@ -92,6 +95,28 @@ export const gateRecordRpc = defineRpc({
     ok: z.boolean(),
     output: z.string(),
     gates: z.array(readyGate).optional(),
+  }),
+});
+
+export const judgeGateRpc = defineRpc({
+  name: "spacedock.gate.judge",
+  input: z.object({
+    workflowDir: z.string(),
+    entity: z.string(),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    model: z.string().optional(),
+    bin: z.string().optional(),
+  }),
+  output: z.object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    verdict: z.string().optional(),
+    confidence: z.number().optional(),
+    probabilities: z.record(z.string(), z.number()).optional(),
+    evidence: z.number().nullable().optional(),
+    risk: z.number().nullable().optional(),
+    model: z.string().optional(),
   }),
 });
 

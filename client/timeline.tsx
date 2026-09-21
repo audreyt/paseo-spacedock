@@ -1,6 +1,7 @@
 import {
   type PluginTimelineItemProps,
   useRpc,
+  useSettings,
 } from "@getpaseo/plugin/client";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -8,6 +9,8 @@ import { Pressable, Text, View } from "react-native";
 import {
   type GatesTimelineData,
   gateRecordRpc,
+  judgeGateRpc,
+  spacedockSettings,
 } from "../shared/contracts";
 
 type Decision = "approve" | "revise" | "hold";
@@ -18,7 +21,10 @@ export function GatesCard({
   agentId,
 }: PluginTimelineItemProps<GatesTimelineData>) {
   const record = useRpc(gateRecordRpc);
+  const judge = useRpc(judgeGateRpc);
+  const settings = useSettings(spacedockSettings);
   const [error, setError] = useState<string | null>(null);
+  const [verdicts, setVerdicts] = useState<Record<string, string>>({});
   const decide = useMutation({
     mutationFn: (input: { entity: string; decision: Decision }) =>
       record({
@@ -32,6 +38,36 @@ export function GatesCard({
     onSuccess: (result) => {
       if (!result.ok) setError(result.output || "gate record failed");
     },
+  });
+  const askJudge = useMutation({
+    mutationFn: (entity: string) =>
+      judge({
+        workflowDir: item.data.workflowDir,
+        entity,
+        apiKey:
+          settings.status === "ready" && settings.values.typesafeApiKey.trim()
+            ? settings.values.typesafeApiKey.trim()
+            : undefined,
+        baseUrl:
+          settings.status === "ready" && settings.values.typesafeBaseUrl.trim()
+            ? settings.values.typesafeBaseUrl.trim()
+            : undefined,
+        model:
+          settings.status === "ready" && settings.values.typesafeModel.trim()
+            ? settings.values.typesafeModel.trim()
+            : undefined,
+      }),
+    onSuccess: (result, entity) => {
+      if (result.ok && result.verdict) {
+        setVerdicts((v) => ({
+          ...v,
+          [entity]: `${result.verdict}@${result.confidence?.toFixed(2) ?? "?"}`,
+        }));
+      } else if (!result.ok) {
+        setError(result.error ?? "judge failed");
+      }
+    },
+    onError: (e) => setError(String(e)),
   });
 
   const gates = item.data.gates;
@@ -106,6 +142,27 @@ export function GatesCard({
               </Text>
             </Pressable>
           ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Judge ${gate.slug}`}
+            disabled={askJudge.isPending}
+            onPress={() => askJudge.mutate(gate.slug || gate.id)}
+            style={{
+              paddingVertical: 4,
+              paddingHorizontal: 10,
+              borderRadius: 6,
+              backgroundColor: theme.colors.surface2,
+            }}
+          >
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+              Judge
+            </Text>
+          </Pressable>
+          {verdicts[gate.slug || gate.id] ? (
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+              Jev: {verdicts[gate.slug || gate.id]}
+            </Text>
+          ) : null}
         </View>
       ))}
       {error ? (

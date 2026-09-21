@@ -1,11 +1,13 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   gateRecordRpc,
+  judgeGateRpc,
   launchFoRpc,
   spacedockSettings,
   statusRpc,
 } from "./shared/contracts";
 import { bootStatus, gateRecord, readyGates } from "./server/cli";
+import { gatherGateState, judgeGate } from "./server/judge";
 import { registerHooks } from "./server/hooks";
 import { launchFirstOfficer } from "./server/launch";
 
@@ -52,6 +54,33 @@ export default function contribute(server: PluginServerContext) {
       }
     }
     return { ok: result.ok, output: result.output, gates };
+  });
+
+  server.handle(judgeGateRpc, async (input) => {
+    const apiKey = input.apiKey || process.env.TYPESAFE_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        error: "no TypeSafe API key — set typesafeApiKey in plugin settings",
+      };
+    }
+    const gates = await readyGates(input.workflowDir, input.bin).catch(() => []);
+    const gate = gates.find(
+      (g) => g.slug === input.entity || g.id === input.entity,
+    );
+    if (!gate) {
+      return { ok: false, error: `no ready gate for ${input.entity}` };
+    }
+    try {
+      const state = await gatherGateState(input.workflowDir, gate);
+      const result = await judgeGate(state, apiKey, {
+        baseUrl: input.baseUrl || undefined,
+        model: input.model || undefined,
+      });
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
   });
 
   server.handle(launchFoRpc, launchFirstOfficer);

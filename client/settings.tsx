@@ -18,6 +18,9 @@ export function SpacedockSettings({ theme }: PluginSurfaceProps) {
     binaryPath: "",
     skillsDir: "",
     foProvider: "",
+    typesafeApiKey: "",
+    typesafeBaseUrl: "",
+    typesafeModel: "",
   });
   const seeded = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -58,6 +61,33 @@ export function SpacedockSettings({ theme }: PluginSurfaceProps) {
             placeholder="~/w/spacedock/skills"
             initialValue={draft.skillsDir}
             onChangeText={(text) => setDraft((d) => ({ ...d, skillsDir: text }))}
+          />
+          <SettingsInput
+            label="TypeSafe API key"
+            hint="Used by the Judge button (api.typesafe.ai). Stored in host-scoped plugin settings; also read from TYPESAFE_API_KEY on the daemon."
+            placeholder="ts-…"
+            initialValue={draft.typesafeApiKey}
+            onChangeText={(text) =>
+              setDraft((d) => ({ ...d, typesafeApiKey: text }))
+            }
+          />
+          <SettingsInput
+            label="TypeSafe base URL"
+            hint="Empty = https://api.typesafe.ai; set to a local TypeSafe-compatible server if you run one"
+            placeholder="https://api.typesafe.ai"
+            initialValue={draft.typesafeBaseUrl}
+            onChangeText={(text) =>
+              setDraft((d) => ({ ...d, typesafeBaseUrl: text }))
+            }
+          />
+          <SettingsInput
+            label="Judge model"
+            hint="Empty = jev-latest (or TYPESAFE_DEFAULT_MODEL on the daemon)"
+            placeholder="jev-latest"
+            initialValue={draft.typesafeModel}
+            onChangeText={(text) =>
+              setDraft((d) => ({ ...d, typesafeModel: text }))
+            }
           />
           <SettingsInput
             label="First-officer provider"

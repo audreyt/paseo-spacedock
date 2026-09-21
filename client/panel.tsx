@@ -10,6 +10,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import {
   type BootStatus,
   gateRecordRpc,
+  judgeGateRpc,
   launchFoRpc,
   type ReadyGate,
   spacedockSettings,
@@ -23,31 +24,71 @@ function GateCard({
   workflowDir,
   theme,
   compact,
+  bin,
+  apiKey,
+  baseUrl,
+  model,
   onDecided,
 }: {
   gate: ReadyGate;
   workflowDir: string;
   theme: PluginWorkspacePanelProps["theme"];
   compact: boolean;
+  bin?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
   onDecided: () => void;
 }) {
   const record = useRpc(gateRecordRpc);
+  const judge = useRpc(judgeGateRpc);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [verdict, setVerdict] = useState<{
+    verdict?: string;
+    confidence?: number;
+    evidence?: number | null;
+    risk?: number | null;
+  } | null>(null);
   const decide = useMutation({
-    mutationFn: (decision: Decision) =>
-      record({
+    mutationFn: (decision: Decision) => {
+      const note = verdict?.verdict
+        ? `Jev ${verdict.verdict}@${verdict.confidence?.toFixed(2) ?? "?"}`
+        : null;
+      const text = [reason.trim() || null, note].filter(Boolean).join(" · ");
+      return record({
         workflowDir,
         entity: gate.slug || gate.id,
         decision,
-        reason: reason.trim() || undefined,
+        reason: text || undefined,
         consume: decision === "approve",
-      }),
+        bin,
+      });
+    },
     onSuccess: (result) => {
       if (result.ok) {
         onDecided();
       } else {
         setMessage(result.output || "gate record failed");
+      }
+    },
+    onError: (error) => setMessage(String(error)),
+  });
+  const askJudge = useMutation({
+    mutationFn: () =>
+      judge({
+        workflowDir,
+        entity: gate.slug || gate.id,
+        apiKey,
+        baseUrl,
+        model,
+        bin,
+      }),
+    onSuccess: (result) => {
+      if (result.ok) {
+        setVerdict(result);
+      } else {
+        setMessage(result.error ?? "judge failed");
       }
     },
     onError: (error) => setMessage(String(error)),
@@ -111,7 +152,34 @@ function GateCard({
         {button("approve", "Approve", true)}
         {button("revise", "Revise", false)}
         {button("hold", "Hold", false)}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Judge ${gate.slug}`}
+          disabled={askJudge.isPending}
+          onPress={() => askJudge.mutate()}
+          style={{
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+            borderRadius: 8,
+            backgroundColor: theme.colors.surface2,
+          }}
+        >
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>
+            {askJudge.isPending ? "Judging…" : "Judge"}
+          </Text>
+        </Pressable>
       </View>
+      {verdict?.verdict ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+          Jev suggests {verdict.verdict} (confidence{" "}
+          {verdict.confidence?.toFixed(2) ?? "?"}
+          {verdict.evidence != null
+            ? `, evidence ${verdict.evidence.toFixed(2)}`
+            : ""}
+          {verdict.risk != null ? `, risk ${verdict.risk.toFixed(2)}` : ""}) —
+          captain still decides.
+        </Text>
+      ) : null}
       {message ? (
         <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
           {message}
@@ -172,10 +240,22 @@ export function SpacedockPanel({
 }: PluginWorkspacePanelProps) {
   const directory = useWorkspace(workspaceId, (w) => w.directory);
   const settings = useSettings(spacedockSettings);
-  const bin =
-    settings.status === "ready" && settings.values.binaryPath.trim()
-      ? settings.values.binaryPath.trim()
+  const setting = (
+    k:
+      | "binaryPath"
+      | "skillsDir"
+      | "foProvider"
+      | "typesafeApiKey"
+      | "typesafeBaseUrl"
+      | "typesafeModel",
+  ) =>
+    settings.status === "ready" && settings.values[k].trim()
+      ? settings.values[k].trim()
       : undefined;
+  const bin = setting("binaryPath");
+  const apiKey = setting("typesafeApiKey");
+  const baseUrl = setting("typesafeBaseUrl");
+  const model = setting("typesafeModel");
   const status = useRpc(statusRpc);
   const launchFo = useRpc(launchFoRpc);
   const queryClient = useQueryClient();
@@ -197,10 +277,7 @@ export function SpacedockPanel({
         bin,
         provider:
           settings.status === "ready" ? settings.values.foProvider : undefined,
-        skillsDir:
-          settings.status === "ready" && settings.values.skillsDir.trim()
-            ? settings.values.skillsDir.trim()
-            : undefined,
+        skillsDir: setting("skillsDir"),
       }),
     onSuccess: (result) => {
       setLaunchMessage(
@@ -297,6 +374,10 @@ export function SpacedockPanel({
                 workflowDir={data.workflowDir}
                 theme={theme}
                 compact={layout.compact}
+                bin={bin}
+                apiKey={apiKey}
+                baseUrl={baseUrl}
+                model={model}
                 onDecided={() =>
                   queryClient.invalidateQueries({
                     queryKey: ["spacedock-status", directory, bin],

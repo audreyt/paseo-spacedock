@@ -22,7 +22,39 @@ Requires the `spacedock` binary on the daemon host and a commissioned workflow
   workflow dir and the first-officer skill when resolvable.
 - **`/spacedock`** slash command and a Command Center item open the panel.
 - **Settings screen** — binary path override, skills directory, first-officer
-  provider (empty = first available).
+  provider (empty = first available), TypeSafe API key, base URL, and judge model.
+
+## Gate judgment (Jev / TypeSafe-compatible)
+
+The **Judge** button on a gate asks a TypeSafe System One model (Jev by default)
+for a recommendation and shows it next to the gate; the captain still records the
+decision as `person:captain`. The model returns a typed judgment, not prose:
+
+- **verdict** — a `choice` among `approve`, `revise`, `hold`, with a
+  `confidence` number and a `probabilities` object over the three options.
+- **evidence** — a `noul` probability (0–1) that the briefing artifacts actually
+  support the gate question being answered.
+- **risk** — a `score` (0–2) for how costly a wrong approval would be, from
+  "routine and easily reversed" to "serious damage or hard to reverse".
+
+The recommendation is advisory only. Approve / Revise / Hold still call
+`gate record --consume` on approval and stamp the captain's reason.
+
+### Settings and environment
+
+The judge resolves its credentials and endpoint in this order:
+
+- **API key** — `typesafeApiKey` in plugin settings, falling back to the
+  `TYPESAFE_API_KEY` environment variable on the daemon.
+- **Base URL** — `typesafeBaseUrl` in plugin settings, falling back to
+  `TYPESAFE_BASE_URL` on the daemon, then `https://api.typesafe.ai`. Empty means
+  the public endpoint.
+- **Model** — `typesafeModel` in plugin settings, falling back to
+  `TYPESAFE_DEFAULT_MODEL` on the daemon, then `jev-latest`.
+
+Any server implementing `POST /v1/systemone` with the TypeSafe request/response
+shape works as a base URL — point it at a local TypeSafe-compatible server if
+you run one.
 
 ## Install
 
