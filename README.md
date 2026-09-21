@@ -37,8 +37,15 @@ decision as `person:captain`. The model returns a typed judgment, not prose:
 - **risk** — a `score` (0–2) for how costly a wrong approval would be, from
   "routine and easily reversed" to "serious damage or hard to reverse".
 
-The recommendation is advisory only. Approve / Revise / Hold still call
-`gate record --consume` on approval and stamp the captain's reason.
+The recommendation is advisory only. The plugin never records a decision on its
+own — it shows a **policy outcome** (`delegate <verdict>` or
+`advise <verdict> (<reason>)`) computed from the judgment. `delegate` is a
+statement of what the policy would permit given the numbers, not an actuator:
+no gate is recorded automatically. Approve / Revise / Hold still call
+`gate record --consume` on approval and stamp the captain's reason with the
+judgment's stamp (`jev:<verdict> conf=… evidence=… risk=…`). In the stamp and
+in the policy, every number is a 0–1 fraction; risk is its 0–2 score divided by
+two, so a raw `0.67` is stamped as `risk=0.33`.
 
 ### Settings and environment
 
@@ -81,3 +88,63 @@ paseo plugin logs paseo-spacedock
 Layout: `index.server.ts` + `server/` run in a daemon subprocess and shell out
 to the `spacedock` CLI; `index.client.tsx` + `client/` render in the app;
 `shared/` holds the Zod RPC contracts and settings schema.
+
+## Development: the policy core is Bend2
+
+The deterministic gate policy — whether a Jev judgment may be delegated or must
+only advise, and why — is written in [Bend2](https://bend-lang.com) and
+compiled to JavaScript. Users need nothing: `server/gate/gate.generated.js` is
+committed and loaded at runtime. Only developers editing the policy need the
+`bend` toolchain.
+
+What lives in `bend/`:
+
+- `gate.bend` — the policy code: types (`Verdict`, `Judgment`, `Policy`,
+  `Decision`, `Reason`), `Gate.decide`, display/stamp functions.
+- `LAWS.bend` — the spec: laws the policy must satisfy.
+- `PROOF.bend` — proofs that discharge every law in `LAWS.bend`.
+- `entry.bend` — export manifest; the JS emitter keeps only what `main` reaches,
+  so this touches every def the host calls.
+
+After editing any `.bend` file, regenerate the JS:
+
+```bash
+pnpm bend:build
+```
+
+The build refuses to emit unless `bend bend/PROOF.bend` prints
+`All terms check.` — the laws are checked first, so a broken policy never
+reaches the committed JS. For CI drift detection:
+
+```bash
+pnpm bend:check
+```
+
+Install Bend (dev only):
+
+```bash
+curl -fsSL https://bend-lang.com/install.sh | sh
+```
+
+The 12 laws (from `LAWS.bend`):
+
+- **verdict_preserved** — the decision always carries the judgment's own
+  verdict; the policy never substitutes a different one.
+- **never_delegate_stale** — stale evidence is never delegated, whatever the
+  numbers say.
+- **never_delegate_low_confidence** — below the confidence floor, never
+  delegated.
+- **never_delegate_without_evidence** — without an evidence measurement, never
+  delegated.
+- **never_delegate_without_risk** — without a risk measurement, never
+  delegated.
+- **step_blocks_low_confidence** — a failing confidence check blocks
+  delegation regardless of later checks.
+- **step_blocks_weak_evidence** — weak evidence blocks delegation.
+- **step_blocks_high_risk** — high risk blocks delegation.
+- **step_blocks_ambiguous** — a failing margin check blocks delegation.
+- **step_delegates_iff_all_pass** — delegation happens exactly when every
+  check passed (no other path in).
+- **can_delegate** — the policy is not vacuous: some fresh, well-supported
+  judgment is delegated.
+- **verdict_roundtrip** — verdict names round-trip through the wire format.

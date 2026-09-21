@@ -49,12 +49,16 @@ function GateCard({
     confidence?: number;
     evidence?: number | null;
     risk?: number | null;
+    stamp?: string;
+    policy?: { mode: string; text: string };
   } | null>(null);
   const decide = useMutation({
     mutationFn: (decision: Decision) => {
-      const note = verdict?.verdict
-        ? `Jev ${verdict.verdict}@${verdict.confidence?.toFixed(2) ?? "?"}`
-        : null;
+      const note = verdict?.stamp
+        ? verdict.stamp
+        : verdict?.verdict
+          ? `Jev ${verdict.verdict}@${verdict.confidence?.toFixed(2) ?? "?"}`
+          : null;
       const text = [reason.trim() || null, note].filter(Boolean).join(" · ");
       return record({
         workflowDir,
@@ -176,8 +180,13 @@ function GateCard({
           {verdict.evidence != null
             ? `, evidence ${verdict.evidence.toFixed(2)}`
             : ""}
-          {verdict.risk != null ? `, risk ${verdict.risk.toFixed(2)}` : ""}) —
+          {verdict.risk != null ? `, risk ${verdict.risk.toFixed(2)}/2` : ""}) —
           captain still decides.
+        </Text>
+      ) : null}
+      {verdict?.policy ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+          Policy: {verdict.policy.text}
         </Text>
       ) : null}
       {message ? (

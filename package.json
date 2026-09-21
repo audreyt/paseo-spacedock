@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bend:build": "node scripts/bend-build.mjs",
+    "bend:check": "node scripts/bend-build.mjs --check"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.8.0",

@@ -59,9 +59,13 @@ export function GatesCard({
       }),
     onSuccess: (result, entity) => {
       if (result.ok && result.verdict) {
+        const stamp = result.stamp
+          ? result.stamp
+          : `${result.verdict}@${result.confidence?.toFixed(2) ?? "?"}`;
+        const policy = result.policy ? ` · ${result.policy.text}` : "";
         setVerdicts((v) => ({
           ...v,
-          [entity]: `${result.verdict}@${result.confidence?.toFixed(2) ?? "?"}`,
+          [entity]: `${stamp}${policy}`,
         }));
       } else if (!result.ok) {
         setError(result.error ?? "judge failed");

@@ -73,11 +73,26 @@ export default function contribute(server: PluginServerContext) {
     }
     try {
       const state = await gatherGateState(input.workflowDir, gate);
+      const digest = (state.gate as { digest?: string | null }).digest ?? null;
+      const fresh = !input.expectDigest || input.expectDigest === digest;
       const result = await judgeGate(state, apiKey, {
         baseUrl: input.baseUrl || undefined,
         model: input.model || undefined,
+        fresh,
       });
-      return { ok: true, ...result };
+      const { decision, ...rest } = result;
+      return {
+        ok: true,
+        ...rest,
+        digest,
+        stamp: decision.stamp,
+        policy: {
+          mode: decision.mode,
+          verdict: decision.verdict,
+          reason: decision.reason,
+          text: decision.text,
+        },
+      };
     } catch (error) {
       return { ok: false, error: String(error) };
     }

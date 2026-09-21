@@ -106,6 +106,7 @@ export const judgeGateRpc = defineRpc({
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     model: z.string().optional(),
+    expectDigest: z.string().optional(),
     bin: z.string().optional(),
   }),
   output: z.object({
@@ -117,6 +118,16 @@ export const judgeGateRpc = defineRpc({
     evidence: z.number().nullable().optional(),
     risk: z.number().nullable().optional(),
     model: z.string().optional(),
+    digest: z.string().nullable().optional(),
+    stamp: z.string().optional(),
+    policy: z
+      .object({
+        mode: z.enum(["delegate", "advise"]),
+        verdict: z.enum(["approve", "revise", "hold"]),
+        reason: z.string().optional(),
+        text: z.string(),
+      })
+      .optional(),
   }),
 });
 

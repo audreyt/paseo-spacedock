@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReadyGate } from "../shared/contracts";
+import { toJudgment, decideGate, type GateDecision } from "./gate";
 
 const ENTITY_CAP = 12_000;
 const ARTIFACT_CAP = 6_000;
@@ -85,11 +86,23 @@ async function artifactText(
   return result.stdout.slice(0, ARTIFACT_CAP);
 }
 
+function extractDigest(body: string | null): string | null {
+  if (!body) return null;
+  const re = /digest:\s*(sha256:[0-9a-f]{64})/g;
+  let last: string | null = null;
+  for (const m of body.matchAll(re)) {
+    last = m[1];
+  }
+  return last;
+}
+
 export async function gatherGateState(
   workflowDir: string,
   gate: ReadyGate,
 ): Promise<Record<string, unknown>> {
   const slug = gate.slug || gate.id;
+  const entityBody = readEntity(workflowDir, slug);
+  const digest = extractDigest(entityBody);
   const briefing = latestBriefing(workflowDir, slug, gate.current);
   const artifacts = await Promise.all(
     (briefing?.artifacts ?? [])
@@ -104,12 +117,13 @@ export async function gatherGateState(
     entity: {
       slug,
       status: gate.current,
-      body: readEntity(workflowDir, slug),
+      body: entityBody,
     },
     gate: {
       question: briefing?.question ?? null,
       stage: gate.current,
       readiness: gate.readiness,
+      digest,
     },
     briefing: { artifacts },
   };
@@ -122,12 +136,13 @@ export interface JudgeResult {
   evidence: number | null;
   risk: number | null;
   model: string;
+  decision: GateDecision;
 }
 
 export async function judgeGate(
   state: Record<string, unknown>,
   apiKey: string,
-  opts: { baseUrl?: string; model?: string } = {},
+  opts: { baseUrl?: string; model?: string; fresh?: boolean } = {},
 ): Promise<JudgeResult> {
   const baseUrl = (
     opts.baseUrl ||
@@ -187,10 +202,7 @@ export async function judgeGate(
   };
   const verdict = body.answers?.verdict;
   const choice = verdict?.choice;
-  if (
-    typeof choice !== "string" ||
-    !["approve", "revise", "hold"].includes(choice)
-  ) {
+  if (typeof choice !== "string") {
     throw new Error("typesafe returned no valid verdict choice");
   }
   const probability = (answer: Record<string, unknown> | undefined) => {
@@ -200,7 +212,7 @@ export async function judgeGate(
     }
     return null;
   };
-  return {
+  const result: Omit<JudgeResult, "decision"> = {
     verdict: choice,
     confidence:
       typeof verdict?.confidence === "number" ? verdict.confidence : 0,
@@ -212,4 +224,6 @@ export async function judgeGate(
     risk: probability(body.answers.risk),
     model: typeof body.model === "string" ? body.model : "jev-latest",
   };
+  const judgment = toJudgment(result);
+  return { ...result, decision: decideGate(judgment, opts.fresh ?? true) };
 }
