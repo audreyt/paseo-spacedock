@@ -125,20 +125,29 @@ tablet that syncs over Dropbox/Drive:
   `remarkable-intake.py inbox --dir DIR [--since STATE]` reports newly
   returned files with the matching `gate record` template.
 - `gate-loop.py --inbox DIR --workflow-dir DIR [--auto-record]` closes the
-  loop: for each new annotated PDF it reads the captain's marks — typed
+  loop. For each new annotated PDF it reads the captain's marks — typed
   PDF annotations via pypdf, else a rendered page through a vision reader
   (default `--reader splash`: OpenAI-compatible `image_url` turns against
   `--reader-url`, model auto-discovered from `/v1/models`;
-  `--reader ollama --reader-model <vision-capable>` is the fallback) —
-  parses one unambiguous decision, and drafts `gate record --actor
-  person:captain` (`--consume` on approve; present-gate "reject" maps to
-  record "revise"; the reason stamps the source file plus the transcribed
-  mark). Only typed annotations auto-record: they are captain-added bytes
-  by construction. VLM reads always draft for human confirmation, because
-  a rasterized page cannot distinguish printed prompt text from handwritten
-  marks. Conflicting or missing marks stay human-read, never auto-recorded.
-  Processed files move to `done/`, so re-polls are idempotent. Printed
-  page text is outbound content and is never parsed as a decision.
+  `--reader ollama --reader-model <vision-capable>` is the fallback).
+  It then classifies those marks with a **typed judgment** — Splash
+  `/v1/systemone`, a `choice` over `approve|revise|hold|none` read from
+  answer-slot logits with thinking disabled — and drafts `gate record
+  --actor person:captain` (`--consume` on approve; present-gate "reject"
+  maps to record "revise"; the reason stamps the source file plus the
+  transcribed mark).
+
+  Write authority follows read confidence. A judgment of `none`, or
+  confidence below `--min-confidence` (default 0.85), abstains: nothing is
+  recorded and the file stays in the inbox. A hedged mark such as
+  「批准（但先等 …）」 lands around 0.7 and is therefore held for eyes, while a
+  clean 「批准」 lands near 0.97 and records. `--no-judge`, or an unreachable
+  endpoint, falls back to strict keyword matching, which carries no
+  confidence and so never auto-records — it only prints the command.
+  VLM page reads likewise always draft, because a rasterized page cannot
+  distinguish printed prompt text from handwritten marks. Processed files
+  move to `done/`, so re-polls are idempotent. Printed page text is
+  outbound content and is never parsed as a decision.
 
 ## Install
 

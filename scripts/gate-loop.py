@@ -11,19 +11,25 @@ Watches INBOX for annotated gate PDFs and turns the captain's marks into a
 2. If no annotations, render page 1 and read marks with a vision reader
    (default: local Splash OpenAI-compatible chat completions with image_url;
    `ollama` + a vision-capable model is the fallback).
-3. Parse an unambiguous decision (approve | revise | hold + reason).
+3. Classify the marks with a typed judgment: Splash `/v1/systemone`
+   `choice` over approve|revise|hold|none, read from answer-slot logits
+   with thinking disabled (fast, and it reports calibrated probabilities).
+   `none`, or confidence below --min-confidence, abstains. `--no-judge`
+   (or an unreachable endpoint) falls back to strict keyword matching,
+   which carries no confidence and therefore never auto-records.
 4. With --auto-record, execute `gate record --actor person:captain`
-   (--consume on approve) — annotation reads only. VLM reads always draft
-   for human confirmation, because a rasterized page cannot distinguish
-   printed prompt text from handwritten marks.
+   (--consume on approve) — annotation reads judged above the floor only.
+   VLM reads always draft for human confirmation, because a rasterized
+   page cannot distinguish printed prompt text from handwritten marks.
 5. Move processed files to DONE so the loop is idempotent.
 
 Present-gate "reject" maps to record "revise" (bounce back with findings).
 
 Usage:
   gate-loop.py --inbox DIR --workflow-dir DIR [--entity SLUG]
-      [--auto-record] [--reader splash|ollama] [--reader-url URL]
-      [--reader-model MODEL] [--since STATE] [--done DIR]
+      [--auto-record] [--min-confidence 0.85] [--no-judge]
+      [--reader splash|ollama] [--reader-url URL] [--reader-model MODEL]
+      [--since STATE] [--done DIR]
 """
 import json
 import re
@@ -131,7 +137,46 @@ def ollama_api(img, model):
     return d["response"]
 
 
+DECISION_QUESTION = {
+    "type": "choice",
+    "instructions": "The captain wrote these marks on a gate-review page. "
+                    "Which decision do the marks express?",
+    "criteria": {
+        "approve": "The marks approve, accept, or say yes (批准／同意／准／ok／lgtm).",
+        "revise": "The marks reject, bounce back, or ask for changes "
+                  "(退回／修改／打回).",
+        "hold": "The marks defer or wait (待定／稍等／hold).",
+        "none": "The marks express no decision at all.",
+    },
+}
+
+
+def judge_decision(text, url, model, floor):
+    """Typed judgment over the marks: /v1/systemone choice with a confidence
+    floor. Returns (decision, reason, detail) or None when the endpoint is
+    unavailable, so the caller can fall back to keyword matching."""
+    try:
+        d = _post_json(url + "/v1/systemone", {
+            "model": model or splash_first_model(url),
+            "state": text.strip() or "(no marks)",
+            "questions": {"decision": DECISION_QUESTION},
+        }, timeout=120)
+    except Exception as error:
+        print(f"  (typed judgment unavailable: {type(error).__name__}; "
+              f"falling back to keywords)")
+        return None
+    a = d["answers"]["decision"]
+    choice, conf = a["choice"], a["confidence"]
+    detail = (f"judged {choice} conf={conf:.2f} "
+              f"p={{{', '.join(f'{k}={v:.2f}' for k, v in a['probabilities'].items())}}}")
+    if choice == "none" or conf < floor:
+        return "unclear", "-", detail
+    return choice, f"judged {choice} conf={conf:.2f}", detail
+
+
 def parse_decision(text):
+    """Deterministic fallback: strict DECISION: line, else a single
+    unambiguous keyword family."""
     m = re.search(r"DECISION:\s*(approve|revise|hold|unclear)", text)
     r = re.search(r"REASON:\s*(.+)", text)
     if m and m.group(1) != "unclear":
@@ -165,6 +210,9 @@ def main():
     url = (rest[rest.index("--reader-url") + 1] if "--reader-url" in rest
            else "http://127.0.0.1:8000")
     model = rest[rest.index("--reader-model") + 1] if "--reader-model" in rest else None
+    floor = float(rest[rest.index("--min-confidence") + 1]
+                  if "--min-confidence" in rest else 0.85)
+    keywords_only = "--no-judge" in rest
     state = Path(rest[rest.index("--since") + 1]) if "--since" in rest else None
     done = Path(rest[rest.index("--done") + 1]
                 if "--done" in rest else inbox / "done")
@@ -187,7 +235,12 @@ def main():
         else:
             source = f"{reader}-vlm"
             text = vlm_read(pdf, reader, url, model)
-        decision, reason = parse_decision(text)
+        judged = None if keywords_only else judge_decision(text, url, model, floor)
+        if judged:
+            decision, reason, detail = judged
+        else:
+            decision, reason = parse_decision(text)
+            detail = f"keywords -> {decision}"
         evidence = marks.strip().splitlines()[0][:120] if marks.strip() else reason
         stamp = f"rm:{pdf.name}: {evidence}"[:220]
         cmd = ["spacedock", "gate", "record", entity,
@@ -197,18 +250,23 @@ def main():
             cmd.append("--consume")
         cmd += ["--workflow-dir", str(wf)]
         if decision == "unclear":
-            print(f"{pdf.name}: unclear marks ({source}) — needs eyes, no record")
+            print(f"{pdf.name}: unclear marks ({source}; {detail}) — "
+                  f"needs eyes, no record")
             print("  marks/text:\n  " + "\n  ".join(text.splitlines()[:12]))
             continue
-        if auto and source == "pdf-text":
+        if auto and source == "pdf-text" and judged:
             out = run(cmd).stdout.strip().replace("\n", " | ")
-            print(f"{pdf.name}: recorded {decision} ({source}) :: {out}")
+            print(f"{pdf.name}: recorded {decision} ({source}; {detail}) :: {out}")
             pdf.rename(done / pdf.name)
             seen.add(pdf.name)
         else:
-            why = ("VLM reads need eyes; not auto-recorded"
-                   if source != "pdf-text" else "draft:")
-            print(f"{pdf.name}: {why} {decision} ({source}):")
+            if source != "pdf-text":
+                why = "VLM reads need eyes; not auto-recorded"
+            elif not judged:
+                why = "keyword read carries no confidence; not auto-recorded"
+            else:
+                why = "draft:"
+            print(f"{pdf.name}: {why} {decision} ({source}; {detail}):")
             print("  " + shlex.join(cmd))
     if state:
         state.write_text(json.dumps(sorted(seen)))
