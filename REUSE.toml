@@ -1,0 +1,12 @@
+# Machine-readable license map for every file in this repository.
+# NONE means the dedication names no copyright holder.
+# The copyright legal text is LICENSES/CC0-1.0.txt. LICENSE is the same text.
+# PATENTS.md records the patent position. It is not a copyright license.
+
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"

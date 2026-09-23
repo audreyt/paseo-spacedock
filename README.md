@@ -1,6 +1,6 @@
 # paseo-spacedock
 
-Public domain under [CC0 1.0](LICENSE), plus the patent grant in [PATENTS.md](PATENTS.md).
+Public domain under [CC0 1.0](LICENSE). The publisher holds no patents.
 
 A [Paseo](https://paseo.sh) plugin that puts [Spacedock](https://github.com/spacedock-dev/spacedock)'s
 decision layer inside Paseo: agents do the work, the captain records the calls.
@@ -152,6 +152,12 @@ tablet that syncs over Dropbox/Drive:
 ## Install
 
 ```bash
+paseo plugin install https://github.com/audreyt/paseo-spacedock.git --ref v0.1.0
+```
+
+For development or a local checkout:
+
+```bash
 paseo plugin install /absolute/path/to/paseo-spacedock
 ```
 
@@ -245,7 +251,7 @@ You may copy, change, and share this project for any purpose, including commerci
 
 Where the law allows it, copyright and related rights in these files, including database rights, are waived worldwide for the longest term the law provides. Where a court will not give that waiver effect, the backup license inside CC0 gives each person those same rights.
 
-Patent rights are granted in [PATENTS.md](PATENTS.md). That grant is permanent, worldwide, royalty-free, and irrevocable. It covers patent claims the rights holder can license when this project infringes them. Trademarks and names stay with their owners. Patents that belong to other people stay with those people.
+The publisher holds no patents and will not file or acquire one. [PATENTS.md](PATENTS.md) records that. Trademarks and names stay with their owners. Patents owned by other people stay with those people.
 
 Work from other people stays under its own terms. Packages installed from a registry are not part of this dedication.
 

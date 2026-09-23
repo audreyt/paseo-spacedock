@@ -1,3 +1,7 @@
+// Public domain under CC0 1.0. See LICENSE and PATENTS.md.
+// SPDX-FileCopyrightText: NONE
+// SPDX-License-Identifier: CC0-1.0
+
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,

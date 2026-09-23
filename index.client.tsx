@@ -1,3 +1,7 @@
+// Public domain under CC0 1.0. See LICENSE and PATENTS.md.
+// SPDX-FileCopyrightText: NONE
+// SPDX-License-Identifier: CC0-1.0
+
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { LaunchSurface } from "./client/launch";
 import { SpacedockPanel } from "./client/panel";

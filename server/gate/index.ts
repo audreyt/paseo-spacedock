@@ -1,3 +1,7 @@
+// Public domain under CC0 1.0. See LICENSE and PATENTS.md.
+// SPDX-FileCopyrightText: NONE
+// SPDX-License-Identifier: CC0-1.0
+
 import { Gate, type Decision, type Judgment, type Verdict } from "./gate.generated.js";
 
 export const bp = (x: number) => Math.max(0, Math.min(10000, Math.round(x * 10000)));

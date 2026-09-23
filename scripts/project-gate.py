@@ -1,3 +1,7 @@
+# Public domain under CC0 1.0. See LICENSE and PATENTS.md.
+# SPDX-FileCopyrightText: NONE
+# SPDX-License-Identifier: CC0-1.0
+
 """Project one open Spacedock gate to a bilingual Lantern spine.
 
 Reads: entity front-matter gates binding + room index.json + stage def.
